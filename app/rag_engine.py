@@ -473,15 +473,103 @@ class RagEngine:
         llm = self._get_llm(provider)
         return llm.generate_stream(prompt)
 
-    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10, provider: Optional[str] = None, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None) -> Dict[str, Any]:
+    # ===== Rewrite & Aggregate Retrieval =====
+    def _rewrite_queries(self, question: str, n: int = 2, provider: Optional[str] = None) -> List[str]:
+        n = max(1, min(int(n or 1), 5))
+        sys = (
+            "Bạn là công cụ rewrite truy vấn. Trả về MẢNG JSON gồm vài biến thể truy vấn ngắn gọn (tiếng Việt), "
+            "giữ nguyên ý nghĩa, tối đa N phần tử. Chỉ in JSON, không giải thích."
+        )
+        ins = (
+            f"N={n}. Câu hỏi gốc: {question}\n"
+            "Yêu cầu đầu ra: một mảng JSON thuần, ví dụ: [\"câu hỏi 1\", \"câu hỏi 2\"]."
+        )
+        prompt = f"[SYSTEM]\n{sys}\n[/SYSTEM]\n{ins}"
+        try:
+            llm = self._get_llm(provider)
+            raw = llm.generate(prompt)
+            s = raw
+            if not s:
+                return []
+            start = s.find('[')
+            end = s.rfind(']')
+            if start != -1 and end != -1 and end > start:
+                arr_txt = s[start:end+1]
+                data = json.loads(arr_txt)
+                outs = [str(x) for x in data if isinstance(x, (str, int, float))]
+                outs = [o for o in outs if o.strip()]
+                return outs[:n]
+        except Exception:
+            return []
+        return []
+
+    def retrieve_aggregate(
+        self,
+        question: str,
+        *,
+        top_k: int = 5,
+        method: str = "vector",
+        bm25_weight: float = 0.5,
+        rrf_enable: Optional[bool] = None,
+        rrf_k: Optional[int] = None,
+        rewrite_enable: bool = False,
+        rewrite_n: int = 2,
+        provider: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        method = (method or "vector").lower()
+        queries: List[str] = [question]
+        if rewrite_enable:
+            try:
+                rewrites = self._rewrite_queries(question, n=rewrite_n, provider=provider)
+                for rw in rewrites:
+                    if rw and rw.strip() and rw.strip() not in queries:
+                        queries.append(rw.strip())
+            except Exception:
+                pass
+        # Thu thập kết quả cho từng query
+        per_query: List[Tuple[List[str], List[Dict[str, Any]]]] = []
+        for q in queries:
+            if method == "bm25":
+                r = self.retrieve_bm25(q, top_k=top_k)
+            elif method == "hybrid":
+                r = self.retrieve_hybrid(q, top_k=top_k, bm25_weight=bm25_weight, rrf_enable=rrf_enable, rrf_k=rrf_k)
+            else:
+                r = self.retrieve(q, top_k=top_k)
+            per_query.append((r.get("documents", []), r.get("metadatas", [])))
+        # RRF fuse across rewrites
+        if len(per_query) == 1:
+            docs, metas = per_query[0]
+            return {"documents": docs[:top_k], "metadatas": metas[:top_k]}
+        rrf_k_val = RRF_K_DEFAULT if rrf_k is None else int(rrf_k)
+        score_map: Dict[Tuple[str, Any, Any], Tuple[float, str, Dict[str, Any]]] = {}
+        for docs, metas in per_query:
+            for idx, (d, m) in enumerate(zip(docs, metas), start=1):
+                key = self._make_key(d, m)
+                inc = 1.0 / (rrf_k_val + idx)
+                if key in score_map:
+                    cur = score_map[key]
+                    score_map[key] = (cur[0] + inc, cur[1], cur[2])
+                else:
+                    score_map[key] = (inc, d, m)
+        combined = sorted(score_map.values(), key=lambda x: x[0], reverse=True)
+        out_docs = [d for _, d, _ in combined[:top_k]]
+        out_metas = [m for _, _, m in combined[:top_k]]
+        return {"documents": out_docs, "metadatas": out_metas}
+
+    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10, provider: Optional[str] = None, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None, rewrite_enable: bool = False, rewrite_n: int = 2) -> Dict[str, Any]:
         method = (method or "vector").lower()
         base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
-        if method == "bm25":
-            retrieved = self.retrieve_bm25(question, top_k=base_k)
-        elif method == "hybrid":
-            retrieved = self.retrieve_hybrid(question, top_k=base_k, bm25_weight=bm25_weight, rrf_enable=rrf_enable, rrf_k=rrf_k)
-        else:
-            retrieved = self.retrieve(question, top_k=base_k)
+        retrieved = self.retrieve_aggregate(
+            question,
+            top_k=base_k,
+            method=method,
+            bm25_weight=bm25_weight,
+            rrf_enable=rrf_enable,
+            rrf_k=rrf_k,
+            rewrite_enable=rewrite_enable,
+            rewrite_n=rewrite_n,
+            provider=provider,
+        )
         docs = retrieved.get("documents", [])
         metas = retrieved.get("metadatas", [])
         if rerank_enable and docs:

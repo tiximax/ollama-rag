@@ -190,6 +190,7 @@ Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), tríc
 - 2025-09-21: Bổ sung khối citations vào index.html và thêm e2e test (mock /api/query) kiểm tra UI citations; sửa thiếu gọi renderCitations ở nhánh non-stream /api/query → e2e light PASS 8/8.
 - 2025-09-21: Tinh chỉnh prompt backend (build_prompt) yêu cầu LLM chèn citations [n] khớp với [CTX n]; chạy lại e2e (light) PASS 8/8.
 - 2025-09-21: Giảm nhiễu log/telemetry Chroma trong test: tắt anonymized_telemetry (Settings), hạ mức logger chromadb/* xuống CRITICAL; e2e (light) PASS 8/8, log sạch hơn.
+- 2025-09-21: B3 — Query rewrite (n) + RRF hợp nhất across rewrites; thêm toggle UI (Rewrite n), cập nhật API, integrate streaming; thêm e2e rewrite (mock). e2e (light) PASS 9/9.
 - 2025-09-21: Thêm smoke test Cloudflare Tunnel (native + Docker), bổ sung scripts npm và cập nhật deploy/README.md.
 
 ## Ghi chú

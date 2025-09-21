@@ -51,6 +51,8 @@ class QueryRequest(BaseModel):
     rerank_top_n: int = 10
     rrf_enable: bool | None = None
     rrf_k: int | None = None
+    rewrite_enable: bool = False
+    rewrite_n: int = 2
     provider: Optional[str] = None
     chat_id: Optional[str] = None
     save_chat: bool = True
@@ -68,6 +70,8 @@ class MultiHopQueryRequest(BaseModel):
     fanout: int = 2
     rrf_enable: bool | None = None
     rrf_k: int | None = None
+    rewrite_enable: bool = False
+    rewrite_n: int = 2
     provider: Optional[str] = None
     chat_id: Optional[str] = None
     save_chat: bool = True
@@ -89,6 +93,8 @@ def api_query(req: QueryRequest):
             provider=req.provider,
             rrf_enable=req.rrf_enable,
             rrf_k=req.rrf_k,
+            rewrite_enable=req.rewrite_enable,
+            rewrite_n=req.rewrite_n,
         )
         # Lưu chat nếu cần
         if req.save_chat and req.chat_id:
@@ -110,12 +116,17 @@ def api_stream_query(req: QueryRequest):
                 engine.use_db(req.db)
             # Lấy contexts theo method đã chọn, có thể áp dụng reranker trước khi stream
             base_k = max(req.k, req.rerank_top_n if req.rerank_enable else req.k)
-            if req.method == "bm25":
-                retrieved = engine.retrieve_bm25(req.query, top_k=base_k)
-            elif req.method == "hybrid":
-                retrieved = engine.retrieve_hybrid(req.query, top_k=base_k, bm25_weight=req.bm25_weight, rrf_enable=req.rrf_enable, rrf_k=req.rrf_k)
-            else:
-                retrieved = engine.retrieve(req.query, top_k=base_k)
+            retrieved = engine.retrieve_aggregate(
+                req.query,
+                top_k=base_k,
+                method=req.method,
+                bm25_weight=req.bm25_weight,
+                rrf_enable=req.rrf_enable,
+                rrf_k=req.rrf_k,
+                rewrite_enable=req.rewrite_enable,
+                rewrite_n=req.rewrite_n,
+                provider=req.provider,
+            )
             ctx_docs = retrieved["documents"]
             metas = retrieved["metadatas"]
             if req.rerank_enable and ctx_docs:

@@ -13,6 +13,9 @@ const bm25Val = document.getElementById('bm25-weight-val');
 const rerankCk = document.getElementById('ck-rerank');
 const rerankTopWrap = document.getElementById('rerank-topn-wrap');
 const rerankTopN = document.getElementById('rerank-topn');
+const rewriteCk = document.getElementById('ck-rewrite');
+const rewriteNWrap = document.getElementById('rewrite-n-wrap');
+const rewriteN = document.getElementById('rewrite-n');
 const dbSelect = document.getElementById('db-select');
 const dbNewName = document.getElementById('db-new-name');
 const dbCreateBtn = document.getElementById('btn-db-create');
@@ -359,6 +362,8 @@ async function ask() {
   const bm25_weight = parseFloat(bm25Range.value || '0.5');
   const rerank_enable = !!rerankCk.checked;
   const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
+  const rewrite_enable = !!rewriteCk.checked;
+  const rewrite_n = parseInt(rewriteN.value || '2', 10);
   if (!q) {
     resultDiv.textContent = 'Vui lòng nhập câu hỏi';
     return;
@@ -374,14 +379,14 @@ async function ask() {
       if (multihopCk.checked) {
         await askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat);
       } else {
-        await askStreaming(q, k, method, bm25_weight, chat_id, save_chat);
+        await askStreaming(q, k, method, bm25_weight, chat_id, save_chat, { rewrite_enable, rewrite_n });
       }
     } else {
       if (multihopCk.checked) {
         const resp = await fetch('/api/multihop_query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), provider, chat_id, save_chat, db: dbSelect.value || null })
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), provider, chat_id, save_chat, db: dbSelect.value || null, rewrite_enable, rewrite_n })
         });
         const data = await resp.json();
         if (resp.ok) {
@@ -400,7 +405,7 @@ async function ask() {
         const resp = await fetch('/api/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null })
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null, rewrite_enable, rewrite_n })
         });
         const data = await resp.json();
         if (resp.ok) {
@@ -422,14 +427,19 @@ async function ask() {
   }
 }
 
-async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat) {
+async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat, opt) {
   const rerank_enable = !!rerankCk.checked;
   const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
   const provider = providerSel ? providerSel.value : undefined;
+  const payload = { query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null };
+  if (opt && typeof opt.rewrite_enable !== 'undefined') {
+    payload.rewrite_enable = !!opt.rewrite_enable;
+    payload.rewrite_n = parseInt(opt.rewrite_n || 2, 10);
+  }
   const resp = await fetch('/api/stream_query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null })
+    body: JSON.stringify(payload)
   });
   if (!resp.ok || !resp.body) {
     resultDiv.textContent = `Streaming thất bại: ${resp.status}`;
@@ -584,6 +594,10 @@ multihopCk.addEventListener('change', () => {
   const on = multihopCk.checked;
   multihopDepthWrap.style.display = on ? '' : 'none';
   multihopFanoutWrap.style.display = on ? '' : 'none';
+});
+
+rewriteCk.addEventListener('change', () => {
+  rewriteNWrap.style.display = rewriteCk.checked ? '' : 'none';
 });
 
 if (providerSel) {
