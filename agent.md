@@ -12,6 +12,9 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - LLM: Ollama (mặc định llama3.1:8b), streaming qua /api/stream_query
 - Embedding: Ollama nomic-embed-text (client gọi /api/embeddings)
 - UI: web (web/index.html, app.js, styles.css)
+- Desktop shell: PyQt6 + QWebEngineView (desktop/main.py)
+  - Cấu hình URL/Host/Port, Start/Stop server trong app, tự động reconnect
+  - Lưu cấu hình tại %USERPROFILE%\.ollama_rag_desktop.json
 - Ingest: TXT, PDF (pypdf), DOCX (python-docx) – thêm file vào data/docs rồi gọi /api/ingest
 - Tính năng UI: nhập câu hỏi, đặt số CTX k, bật Streaming; hiển thị các CTX
 - Script: scripts/ingest.py, scripts/run_server.ps1, scripts/pull_models.ps1
@@ -44,7 +47,7 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - [x] Hybrid Search (FAISS+BM25) + tham số hóa
 - [x] Tích hợp Reranker BGE v2 (INT8) (ưu tiên ONNX; fallback cosine embedding)
 - [x] Multi-DB cơ bản (API + UI)
-- [ ] Desktop shell PyQt6 (khung, nhúng UI)
+- [x] Desktop shell PyQt6 (khung, nhúng UI, cấu hình server, Start/Stop)
 
 ## Hướng dẫn sử dụng nhanh
 - Kéo models:
@@ -72,6 +75,8 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - 2025-09-21: Server local hoạt động tại http://127.0.0.1:8000; sẵn sàng chạy tunnel nếu có CF_TUNNEL_TOKEN.
 - 2025-09-21: Thiết lập khung test e2e Playwright (globalSetup khởi động Ollama; webServer khởi động FastAPI). Chạy test thành công (5 cases pass, gồm Hybrid + Reranker).
 - 2025-09-21: Thêm Desktop shell PyQt6 khung cơ bản (desktop/main.py) + script chạy (scripts/run_desktop.ps1); Desktop shell tự khởi động server nếu chưa chạy và nhúng UI web.
+- 2025-09-21: Nâng cấp Desktop shell: hộp thoại cấu hình (URL/Host/Port), Start/Stop server trong app, tự động reconnect; cấu hình lưu ở %USERPROFILE%\.ollama_rag_desktop.json.
+- 2025-09-21: Ổn định gọi Ollama: thêm retry + backoff và timeout cho embeddings/generate (app/ollama_client.py). Biến môi trường: OLLAMA_CONNECT_TIMEOUT, OLLAMA_READ_TIMEOUT, OLLAMA_MAX_RETRIES, OLLAMA_RETRY_BACKOFF. Toàn bộ e2e tests PASS (6/6).
 
 ## Ghi chú
 - Khi thêm tính năng mới, theo rule: chạy test automation (MCP Playwright) và sửa cho đến khi pass.
