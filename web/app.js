@@ -37,8 +37,12 @@ const providerName = document.getElementById('provider-name');
 const multihopCk = document.getElementById('ck-multihop');
 const multihopDepthWrap = document.getElementById('multihop-depth-wrap');
 const multihopFanoutWrap = document.getElementById('multihop-fanout-wrap');
+const multihopFanout1Wrap = document.getElementById('multihop-fanout1-wrap');
+const multihopBudgetWrap = document.getElementById('multihop-budget-wrap');
 const hopDepth = document.getElementById('hop-depth');
 const hopFanout = document.getElementById('hop-fanout');
+const hopFanout1 = document.getElementById('hop-fanout1');
+const hopBudget = document.getElementById('hop-budget');
 
 async function loadProvider() {
   try {
@@ -386,7 +390,7 @@ async function ask() {
         const resp = await fetch('/api/multihop_query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), provider, chat_id, save_chat, db: dbSelect.value || null, rewrite_enable, rewrite_n })
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), fanout_first_hop: parseInt(hopFanout1.value||'1',10), budget_ms: parseInt(hopBudget.value||'0',10), provider, chat_id, save_chat, db: dbSelect.value || null, rewrite_enable, rewrite_n })
         });
         const data = await resp.json();
         if (resp.ok) {
@@ -594,6 +598,8 @@ multihopCk.addEventListener('change', () => {
   const on = multihopCk.checked;
   multihopDepthWrap.style.display = on ? '' : 'none';
   multihopFanoutWrap.style.display = on ? '' : 'none';
+  multihopFanout1Wrap.style.display = on ? '' : 'none';
+  multihopBudgetWrap.style.display = on ? '' : 'none';
 });
 
 rewriteCk.addEventListener('change', () => {

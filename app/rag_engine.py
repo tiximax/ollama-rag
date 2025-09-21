@@ -4,6 +4,7 @@ import re
 import shutil
 import json
 import logging
+import time
 from typing import List, Dict, Any, Sequence, Optional, Tuple
 
 from dotenv import load_dotenv
@@ -634,24 +635,49 @@ class RagEngine:
         skip_answer: bool = False,
         rrf_enable: Optional[bool] = None,
         rrf_k: Optional[int] = None,
+        fanout_first_hop: Optional[int] = None,
+        budget_ms: Optional[int] = None,
     ) -> Dict[str, Any]:
         depth = max(1, min(int(depth or 1), 3))
         fanout = max(1, min(int(fanout or 1), 3))
+        if fanout_first_hop is not None:
+            try:
+                fanout_first_hop = max(1, min(int(fanout_first_hop), 5))
+            except Exception:
+                fanout_first_hop = None
+        budget_ms = int(budget_ms or 0)
+        start_ms = int(time.time() * 1000)
+        def time_left_ok() -> bool:
+            if budget_ms <= 0:
+                return True
+            return (int(time.time() * 1000) - start_ms) < budget_ms
+
         agg_docs: List[str] = []
         agg_metas: List[Dict[str, Any]] = []
         seen_keys = set()
         subquestions_all: List[str] = []
         cur_questions = [question]
         # Duyệt theo tầng
-        for _ in range(depth):
+        for hop_idx in range(depth):
+            if not time_left_ok():
+                break
             next_questions: List[str] = []
+            # Chọn fanout cho hop này
+            this_fanout = fanout_first_hop if (hop_idx == 0 and fanout_first_hop) else fanout
             # Decompose mỗi câu hỏi hiện tại
             for q in cur_questions:
-                subs = self._decompose(q, fanout=fanout)
+                if not time_left_ok():
+                    break
+                subs = self._decompose(q, fanout=this_fanout)
                 subquestions_all.extend(subs)
+                # Nếu sát budget, cắt bớt subs
+                if budget_ms > 0 and len(subs) > 1 and not time_left_ok():
+                    subs = subs[:1]
                 next_questions.extend(subs)
             # Retrieve cho tất cả sub-qs của tầng này
             for sq in next_questions:
+                if not time_left_ok():
+                    break
                 base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
                 if method == "bm25":
                     retrieved = self.retrieve_bm25(sq, top_k=base_k)
@@ -699,5 +725,7 @@ class RagEngine:
             "rerank_top_n": rerank_top_n,
             "depth": depth,
             "fanout": fanout,
+            "fanout_first_hop": fanout_first_hop,
+            "budget_ms": budget_ms,
             "subquestions": subquestions_all,
         }

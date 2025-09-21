@@ -68,12 +68,14 @@ class MultiHopQueryRequest(BaseModel):
     rerank_top_n: int = 10
     depth: int = 2
     fanout: int = 2
+    fanout_first_hop: Optional[int] = None
+    budget_ms: Optional[int] = None
     rrf_enable: bool | None = None
     rrf_k: int | None = None
-    rewrite_enable: bool = False
-    rewrite_n: int = 2
     provider: Optional[str] = None
     chat_id: Optional[str] = None
+    save_chat: bool = True
+    db: str | None = None
     save_chat: bool = True
     db: str | None = None
 
@@ -116,19 +118,53 @@ def api_stream_query(req: QueryRequest):
                 engine.use_db(req.db)
             # Lấy contexts theo method đã chọn, có thể áp dụng reranker trước khi stream
             base_k = max(req.k, req.rerank_top_n if req.rerank_enable else req.k)
-            retrieved = engine.retrieve_aggregate(
-                req.query,
-                top_k=base_k,
-                method=req.method,
-                bm25_weight=req.bm25_weight,
-                rrf_enable=req.rrf_enable,
-                rrf_k=req.rrf_k,
-                rewrite_enable=req.rewrite_enable,
-                rewrite_n=req.rewrite_n,
-                provider=req.provider,
-            )
+            if req.rewrite_enable:
+                retrieved = engine.retrieve_aggregate(
+                    req.query,
+                    top_k=base_k,
+                    method=req.method,
+                    bm25_weight=req.bm25_weight,
+                    rrf_enable=req.rrf_enable,
+                    rrf_k=req.rrf_k,
+                    rewrite_enable=True,
+                    rewrite_n=req.rewrite_n,
+                    provider=req.provider,
+                )
+            else:
+                if req.method == "bm25":
+                    retrieved = engine.retrieve_bm25(req.query, top_k=base_k)
+                elif req.method == "hybrid":
+                    retrieved = engine.retrieve_hybrid(req.query, top_k=base_k, bm25_weight=req.bm25_weight, rrf_enable=req.rrf_enable, rrf_k=req.rrf_k)
+                else:
+                    retrieved = engine.retrieve(req.query, top_k=base_k)
             ctx_docs = retrieved["documents"]
             metas = retrieved["metadatas"]
+            # Fallback nếu không có contexts
+            if not ctx_docs:
+                try:
+                    base_k = max(req.k, req.rerank_top_n if req.rerank_enable else req.k)
+                    # Ưu tiên BM25 fallback
+                    fb = engine.retrieve_bm25(req.query, top_k=base_k)
+                    ctx_docs = fb.get("documents", [])
+                    metas = fb.get("metadatas", [])
+                    if not ctx_docs:
+                        # Thử vector
+                        fb2 = engine.retrieve(req.query, top_k=base_k)
+                        ctx_docs = fb2.get("documents", [])
+                        metas = fb2.get("metadatas", [])
+                    if not ctx_docs:
+                        # Lấy ít nhất 1 doc bất kỳ từ collection để hiển thị
+                        try:
+                            results = engine.collection.get(include=["documents", "metadatas"])  # type: ignore[arg-type]
+                            docs_any = results.get("documents", [])
+                            metas_any = results.get("metadatas", [])
+                            if docs_any:
+                                ctx_docs = [docs_any[0]]
+                                metas = [metas_any[0] if metas_any else {}]
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
             if req.rerank_enable and ctx_docs:
                 # dùng hàm private trong engine để giữ logic nhất quán
                 ctx_docs, metas = engine._apply_rerank(req.query, ctx_docs, metas, req.k)  # type: ignore[attr-defined]
@@ -174,6 +210,8 @@ def api_multihop_query(req: MultiHopQueryRequest):
             skip_answer=True,
             rrf_enable=req.rrf_enable,
             rrf_k=req.rrf_k,
+            fanout_first_hop=req.fanout_first_hop,
+            budget_ms=req.budget_ms,
         )
         if req.save_chat and req.chat_id:
             try:
@@ -203,6 +241,8 @@ def api_stream_multihop_query(req: MultiHopQueryRequest):
                 rerank_enable=req.rerank_enable,
                 rerank_top_n=req.rerank_top_n,
                 skip_answer=True,
+                fanout_first_hop=req.fanout_first_hop,
+                budget_ms=req.budget_ms,
             )
             ctx_docs = mh.get("contexts", [])
             metas = mh.get("metadatas", [])

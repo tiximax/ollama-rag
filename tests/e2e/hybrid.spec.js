@@ -4,7 +4,7 @@ const resultSel = '#result';
 const contextsSel = '#contexts .ctx';
 
 test.describe('RAG e2e - Hybrid', () => {
-  test('Hybrid (non-stream) với trọng số BM25', async ({ page }) => {
+  test('Hybrid (non-stream) với trọng số BM25 @heavy', async ({ page }) => {
     await page.goto('/');
 
     // đảm bảo đã có dữ liệu
