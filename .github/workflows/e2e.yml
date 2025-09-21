@@ -1,0 +1,64 @@
+name: e2e-light
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      LLM_MODEL: tinyllama
+      OLLAMA_NUM_THREAD: '2'
+      OLLAMA_NUM_CTX: '1024'
+      OLLAMA_NUM_GPU: '0'
+      ORT_INTRA_OP_THREADS: '1'
+      ORT_INTER_OP_THREADS: '1'
+      UVICORN_RELOAD: '0'
+      RRF_ENABLE: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Install npm deps
+        run: npm install
+
+      - name: Install Playwright browsers & deps
+        run: npx playwright install --with-deps
+
+      - name: Install Ollama (Linux)
+        shell: bash
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          nohup ollama serve >/dev/null 2>&1 &
+          # Đợi server sẵn sàng
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
+              echo "Ollama up"; break; fi; sleep 1; done
+
+      - name: Pull models (light)
+        run: |
+          ollama pull tinyllama
+          ollama pull nomic-embed-text
+
+      - name: Run Playwright e2e (light)
+        run: npm run test:e2e:light -- --config=playwright.ci.config.js
