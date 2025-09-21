@@ -2,6 +2,7 @@ import os
 import uuid
 import re
 import shutil
+import json
 from typing import List, Dict, Any, Sequence, Optional, Tuple
 
 from dotenv import load_dotenv
@@ -420,4 +421,115 @@ class RagEngine:
             "bm25_weight": bm25_weight,
             "rerank_enable": rerank_enable,
             "rerank_top_n": rerank_top_n,
+        }
+
+    # ===== Multi-hop =====
+    def _decompose(self, question: str, fanout: int = 2) -> List[str]:
+        """Dùng LLM để đề xuất một số câu hỏi con ngắn gọn (JSON array).
+        An toàn: ép model phải trả về JSON duy nhất; nếu parse thất bại, fallback 1 subquestion = original.
+        """
+        fanout = max(1, min(int(fanout or 1), 5))
+        sys = (
+            "Bạn là công cụ phân rã câu hỏi. Hãy trả về mảng JSON các câu hỏi con ngắn gọn (tiếng Việt), "
+            "tối đa N phần tử. Chỉ in JSON, không thêm giải thích."
+        )
+        ins = (
+            f"N={fanout}. Câu hỏi gốc: {question}\n"
+            "Yêu cầu đầu ra: một mảng JSON thuần, ví dụ: [\"câu hỏi 1\", \"câu hỏi 2\"]."
+        )
+        prompt = f"[SYSTEM]\n{sys}\n[/SYSTEM]\n{ins}"
+        try:
+            raw = self.ollama.generate(prompt)
+            # Tìm khối JSON array đầu tiên
+            start = raw.find('[')
+            end = raw.rfind(']')
+            if start != -1 and end != -1 and end > start:
+                arr_txt = raw[start:end+1]
+                data = json.loads(arr_txt)
+                subqs = [str(x) for x in data if isinstance(x, (str, int, float))]
+                subqs = [s for s in subqs if s.strip()]
+                if subqs:
+                    return subqs[:fanout]
+        except Exception:
+            pass
+        return [question]
+
+    def answer_multihop(
+        self,
+        question: str,
+        *,
+        depth: int = 2,
+        fanout: int = 2,
+        top_k: int = 5,
+        method: str = "hybrid",
+        bm25_weight: float = 0.5,
+        rerank_enable: bool = False,
+        rerank_top_n: int = 10,
+        skip_answer: bool = False,
+    ) -> Dict[str, Any]:
+        depth = max(1, min(int(depth or 1), 3))
+        fanout = max(1, min(int(fanout or 1), 3))
+        agg_docs: List[str] = []
+        agg_metas: List[Dict[str, Any]] = []
+        seen_keys = set()
+        subquestions_all: List[str] = []
+        cur_questions = [question]
+        # Duyệt theo tầng
+        for _ in range(depth):
+            next_questions: List[str] = []
+            # Decompose mỗi câu hỏi hiện tại
+            for q in cur_questions:
+                subs = self._decompose(q, fanout=fanout)
+                subquestions_all.extend(subs)
+                next_questions.extend(subs)
+            # Retrieve cho tất cả sub-qs của tầng này
+            for sq in next_questions:
+                base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
+                if method == "bm25":
+                    retrieved = self.retrieve_bm25(sq, top_k=base_k)
+                elif method == "hybrid":
+                    retrieved = self.retrieve_hybrid(sq, top_k=base_k, bm25_weight=bm25_weight)
+                else:
+                    retrieved = self.retrieve(sq, top_k=base_k)
+                docs = retrieved.get("documents", [])
+                metas = retrieved.get("metadatas", [])
+                for d, m in zip(docs, metas):
+                    key = self._make_key(d, m)
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    agg_docs.append(d)
+                    agg_metas.append(m)
+            cur_questions = next_questions
+        # Fallback: nếu không thu được context nào qua multi-hop, thử single-hop trên câu hỏi gốc
+        if not agg_docs:
+            base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
+            if method == "bm25":
+                retrieved = self.retrieve_bm25(question, top_k=base_k)
+            elif method == "hybrid":
+                retrieved = self.retrieve_hybrid(question, top_k=base_k, bm25_weight=bm25_weight)
+            else:
+                retrieved = self.retrieve(question, top_k=base_k)
+            agg_docs = retrieved.get("documents", [])
+            agg_metas = retrieved.get("metadatas", [])
+
+        # Rerank/giới hạn top_k
+        if rerank_enable and agg_docs:
+            sel_docs, sel_metas = self._apply_rerank(question, agg_docs, agg_metas, top_k)
+        else:
+            sel_docs = agg_docs[:top_k]
+            sel_metas = agg_metas[:top_k]
+        prompt = self.build_prompt(question, sel_docs)
+        reply = "" if skip_answer else self.ollama.generate(prompt)
+        return {
+            "answer": reply,
+            "contexts": sel_docs,
+            "metadatas": sel_metas,
+            "method": method,
+            "bm25_weight": bm25_weight,
+            "rerank_enable": rerank_enable,
+            "rerank_top_n": rerank_top_n,
+            "depth": depth,
+            "fanout": fanout,
+            "subquestions": subquestions_all,
         }

@@ -16,6 +16,11 @@ const dbSelect = document.getElementById('db-select');
 const dbNewName = document.getElementById('db-new-name');
 const dbCreateBtn = document.getElementById('btn-db-create');
 const dbDeleteBtn = document.getElementById('btn-db-delete');
+const multihopCk = document.getElementById('ck-multihop');
+const multihopDepthWrap = document.getElementById('multihop-depth-wrap');
+const multihopFanoutWrap = document.getElementById('multihop-fanout-wrap');
+const hopDepth = document.getElementById('hop-depth');
+const hopFanout = document.getElementById('hop-fanout');
 
 async function loadDbs() {
   try {
@@ -123,23 +128,46 @@ async function ask() {
 
   try {
     if (streaming) {
-      await askStreaming(q, k, method, bm25_weight);
+      if (multihopCk.checked) {
+        await askStreamingMH(q, k, method, bm25_weight);
+      } else {
+        await askStreaming(q, k, method, bm25_weight);
+      }
     } else {
-      const resp = await fetch('/api/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, db: dbSelect.value || null })
-      });
-      const data = await resp.json();
-      if (resp.ok) {
-        resultDiv.textContent = data.answer || '(Không có trả lời)';
-        const ctxs = data.contexts || [];
-        if (ctxs.length) {
-          const blocks = ctxs.map((c, i) => `<div class=\"ctx\"><strong>CTX ${i+1}</strong><pre>${escapeHtml(c)}</pre></div>`);
-          contextsDiv.innerHTML = blocks.join('');
+      if (multihopCk.checked) {
+        const resp = await fetch('/api/multihop_query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), db: dbSelect.value || null })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          resultDiv.textContent = data.answer || '(Không có trả lời)';
+          const ctxs = data.contexts || [];
+          if (ctxs.length) {
+            const blocks = ctxs.map((c, i) => `<div class=\"ctx\"><strong>CTX ${i+1}</strong><pre>${escapeHtml(c)}</pre></div>`);
+            contextsDiv.innerHTML = blocks.join('');
+          }
+        } else {
+          resultDiv.textContent = `Lỗi truy vấn: ${data.detail}`;
         }
       } else {
-        resultDiv.textContent = `Lỗi truy vấn: ${data.detail}`;
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, db: dbSelect.value || null })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          resultDiv.textContent = data.answer || '(Không có trả lời)';
+          const ctxs = data.contexts || [];
+          if (ctxs.length) {
+            const blocks = ctxs.map((c, i) => `<div class=\"ctx\"><strong>CTX ${i+1}</strong><pre>${escapeHtml(c)}</pre></div>`);
+            contextsDiv.innerHTML = blocks.join('');
+          }
+        } else {
+          resultDiv.textContent = `Lỗi truy vấn: ${data.detail}`;
+        }
       }
     }
   } catch (e) {
@@ -199,6 +227,59 @@ async function askStreaming(q, k, method, bm25_weight) {
   }
 }
 
+async function askStreamingMH(q, k, method, bm25_weight) {
+  const rerank_enable = !!rerankCk.checked;
+  const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
+  const depth = parseInt(hopDepth.value || '2', 10);
+  const fanout = parseInt(hopFanout.value || '2', 10);
+  const resp = await fetch('/api/stream_multihop_query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth, fanout, db: dbSelect.value || null })
+  });
+  if (!resp.ok || !resp.body) {
+    resultDiv.textContent = `Streaming thất bại: ${resp.status}`;
+    return;
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let answer = '';
+  let ctxHandled = false;
+  let buffer = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    buffer += chunk;
+
+    if (!ctxHandled) {
+      const tag = '[[CTXJSON]]';
+      const tagIdx = buffer.indexOf(tag);
+      const nlIdx = buffer.indexOf('\n', tagIdx >= 0 ? tagIdx : 0);
+      if (tagIdx >= 0 && nlIdx > tagIdx) {
+        const header = buffer.substring(tagIdx, nlIdx);
+        const jsonStr = header.replace(tag, '');
+        try {
+          const obj = JSON.parse(jsonStr);
+          const ctxs = obj.contexts || [];
+          const blocks = ctxs.map((c, i) => `<div class=\"ctx\"><strong>CTX ${i+1}</strong><pre>${escapeHtml(c)}</pre></div>`);
+          contextsDiv.innerHTML = blocks.join('');
+        } catch {}
+        ctxHandled = true;
+        buffer = buffer.substring(nlIdx + 1);
+      } else {
+        continue;
+      }
+    }
+
+    if (buffer) {
+      answer += buffer;
+      resultDiv.textContent = answer;
+      buffer = '';
+    }
+  }
+}
+
 function escapeHtml(str) {
   return str
     .replace(/&/g, '&amp;')
@@ -232,4 +313,10 @@ rerankCk.addEventListener('change', () => {
 
 bm25Range.addEventListener('input', () => {
   bm25Val.textContent = bm25Range.value;
+});
+
+multihopCk.addEventListener('change', () => {
+  const on = multihopCk.checked;
+  multihopDepthWrap.style.display = on ? '' : 'none';
+  multihopFanoutWrap.style.display = on ? '' : 'none';
 });

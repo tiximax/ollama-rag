@@ -17,6 +17,10 @@ CONNECT_TIMEOUT = float(os.getenv("OLLAMA_CONNECT_TIMEOUT", "5"))
 READ_TIMEOUT = float(os.getenv("OLLAMA_READ_TIMEOUT", "180"))
 MAX_RETRIES = int(os.getenv("OLLAMA_MAX_RETRIES", "3"))
 BACKOFF_FACTOR = float(os.getenv("OLLAMA_RETRY_BACKOFF", "0.6"))
+# Optional tuning for performance/CPU usage
+OPT_NUM_CTX = os.getenv("OLLAMA_NUM_CTX")
+OPT_NUM_THREAD = os.getenv("OLLAMA_NUM_THREAD")
+OPT_NUM_GPU = os.getenv("OLLAMA_NUM_GPU")
 
 
 class OllamaClient:
@@ -71,11 +75,26 @@ class OllamaClient:
             embeddings.append(emb)
         return embeddings
 
+    def _gen_options(self) -> dict:
+        opts: dict = {}
+        try:
+            if OPT_NUM_CTX is not None:
+                opts["num_ctx"] = int(OPT_NUM_CTX)
+            if OPT_NUM_THREAD is not None:
+                opts["num_thread"] = int(OPT_NUM_THREAD)
+            if OPT_NUM_GPU is not None:
+                # 0=CPU only
+                opts["num_gpu"] = int(OPT_NUM_GPU)
+        except Exception:
+            pass
+        return opts
+
     def generate(self, prompt: str, system: Optional[str] = None) -> str:
         payload = {
             "model": LLM_MODEL,
             "prompt": prompt if system is None else f"[SYSTEM]\n{system}\n[/SYSTEM]\n{prompt}",
             "stream": False,
+            "options": self._gen_options(),
         }
         resp = self._request("POST", "/api/generate", json_body=payload, stream=False)
         resp.raise_for_status()
@@ -87,6 +106,7 @@ class OllamaClient:
             "model": LLM_MODEL,
             "prompt": prompt if system is None else f"[SYSTEM]\n{system}\n[/SYSTEM]\n{prompt}",
             "stream": True,
+            "options": self._gen_options(),
         }
         resp = self._request("POST", "/api/generate", json_body=payload, stream=True)
         with resp:

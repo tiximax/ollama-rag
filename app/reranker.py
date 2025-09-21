@@ -52,6 +52,16 @@ class BgeOnnxReranker:
                 return
         try:
             sess_options = ort.SessionOptions()
+            # Giới hạn số luồng để tránh chiếm CPU toàn máy khi test
+            try:
+                intra = int(os.getenv("ORT_INTRA_OP_THREADS", "1"))
+                inter = int(os.getenv("ORT_INTER_OP_THREADS", "1"))
+                if hasattr(sess_options, "intra_op_num_threads"):
+                    sess_options.intra_op_num_threads = intra
+                if hasattr(sess_options, "inter_op_num_threads"):
+                    sess_options.inter_op_num_threads = inter
+            except Exception:
+                pass
             self._session = ort.InferenceSession(model_path, sess_options=sess_options, providers=["CPUExecutionProvider"])  # type: ignore[arg-type]
             self._input_names = [i.name for i in self._session.get_inputs()]
             self._output_names = [o.name for o in self._session.get_outputs()]

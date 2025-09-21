@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 const resultSel = '#result';
 const contextsSel = '#contexts .ctx';
 
-test.describe('RAG e2e - Reranker', () => {
+test.describe('RAG e2e - Reranker @heavy', () => {
   test('Hybrid + Reranker (non-stream)', async ({ page }) => {
     await page.goto('/');
 
@@ -23,7 +23,7 @@ test.describe('RAG e2e - Reranker', () => {
       await rerankCk.check();
     }
     const topn = page.locator('#rerank-topn');
-    await topn.fill('8');
+    await topn.fill('4');
 
     await page.fill('#txt-query', 'Bitsness là gì?');
     await page.fill('#top-k', '3');

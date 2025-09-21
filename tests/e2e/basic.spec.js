@@ -16,7 +16,7 @@ test.describe('RAG e2e', () => {
     await expect(page.locator(resultSel)).toContainText(/Đã index|đã index|chunks/i, { timeout: 60000 });
 
     await page.fill('#txt-query', 'Bitsness là gì?');
-    await page.fill('#top-k', '3');
+    await page.fill('#top-k', '2');
     const streamCk = page.locator('#ck-stream');
     if (!(await streamCk.isChecked())) {
       await streamCk.check();
