@@ -66,6 +66,17 @@ Chat Sessions (API nhanh)
 - DELETE /api/chats/{id}?db=<DB>
 - Lưu tự động Q/A khi hỏi: trong body /api/query (và stream/multihop) thêm chat_id và save_chat=true
 
+Chat advanced (Search / Export / Delete All)
+- UI:
+  - Ô “Tìm trong DB…” + nút Search: tìm theo nội dung messages, kết quả tóm tắt hiển thị ở khối Result
+  - Export JSON/MD: tải file hội thoại hiện chọn (JSON hoặc Markdown)
+  - Delete All: xóa toàn bộ hội thoại của DB hiện tại (không thể hoàn tác)
+- API nhanh (curl minh họa, Windows PowerShell dùng curl alias Invoke-WebRequest):
+  - Tìm: curl "http://127.0.0.1:8000/api/chats/search?db=<DB>&q=<keyword>"
+  - Export JSON: curl "http://127.0.0.1:8000/api/chats/<CHAT_ID>/export?db=<DB>&format=json"
+  - Export MD: curl "http://127.0.0.1:8000/api/chats/<CHAT_ID>/export?db=<DB>&format=md"
+  - Xóa tất cả: curl -X DELETE "http://127.0.0.1:8000/api/chats?db=<DB>"
+
 Cấu hình (tùy chọn .env):
 - OLLAMA_BASE_URL=http://localhost:11434
 - LLM_MODEL=llama3.1:8b

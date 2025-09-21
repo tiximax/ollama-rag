@@ -78,6 +78,14 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - Rename: PATCH /api/chats/{id}?db=<DB> { name }
 - Delete: DELETE /api/chats/{id}?db=<DB>
 - Lưu tự động: gửi chat_id và save_chat=true trong body /api/query, /api/stream_query, /api/multihop_query, /api/stream_multihop_query
+
+#### Chat advanced (Search / Export / Delete All)
+- UI: thanh Chat có ô tìm kiếm, các nút Export JSON/MD, Delete All (theo DB hiện tại)
+- API nhanh:
+  - Tìm: GET /api/chats/search?db=<DB>&q=<keyword>
+  - Export JSON: GET /api/chats/{id}/export?db=<DB>&format=json
+  - Export MD: GET /api/chats/{id}/export?db=<DB>&format=md
+  - Xóa toàn bộ: DELETE /api/chats?db=<DB>
 - Thiết lập biến môi trường trước khi chạy test (pwsh/Windows):
   - $env:LLM_MODEL = "tinyllama"
   - $env:OLLAMA_NUM_THREAD = "2"
