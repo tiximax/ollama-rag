@@ -70,6 +70,39 @@ Lưu ý khi dùng Docker + Ollama local
 
 Streaming/SSE
 - Endpoint /api/stream_query dùng chunked responses; Cloudflare Tunnel hỗ trợ.
+- Header đầu stream có JSON đánh dấu contexts & metadatas (dạng [[CTXJSON]]{json}\n), UI sẽ render "Citations panel" dựa trên metadatas + các marker [n] trong câu trả lời.
+
+Tính năng nâng cao (không cần cấu hình riêng cho Tunnel)
+- Citations [n]: model chèn [n] theo [CTX n]; UI hiển thị footnotes nguồn/chunk. Không yêu cầu cấu hình Cloudflare đặc biệt.
+- Query Rewrite: bật/tắt bằng rewrite_enable và rewrite_n trong body /api/query hoặc /api/stream_query; mặc định tắt để tiết kiệm tài nguyên.
+- Multi-hop nâng cao: /api/multihop_query và /api/stream_multihop_query hỗ trợ fanout_first_hop và budget_ms để kiểm soát chi phí; không cần thay đổi cấu hình Tunnel.
+
+Ví dụ (curl, minh hoạ):
+```
+# Rewrite
+curl -X POST http://127.0.0.1:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Bitsness là gì?",
+    "method": "hybrid",
+    "k": 5,
+    "rewrite_enable": true,
+    "rewrite_n": 2
+  }'
+
+# Multi-hop advanced
+curl -X POST http://127.0.0.1:8000/api/multihop_query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Giải thích A liên quan B",
+    "method": "hybrid",
+    "k": 5,
+    "depth": 2,
+    "fanout": 2,
+    "fanout_first_hop": 1,
+    "budget_ms": 200
+  }'
+```
 
 Upload lớn
 - Cloudflare có giới hạn kích thước HTTP body; khuyến nghị ingest theo đường dẫn local hoặc crawl URL thay vì upload file cực lớn qua Internet.

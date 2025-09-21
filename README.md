@@ -55,7 +55,9 @@ UI — các điều khiển chính
 - Provider: Ollama | OpenAI (generate/stream dùng provider đã chọn; Embeddings luôn dùng Ollama/local)
 - Phương pháp: vector | bm25 | hybrid (+ w BM25)
 - Reranker: bật/tắt + Top-N
-- Multi-hop: bật/tắt + Depth + Fanout
+- Rewrite: bật/tắt + n (sinh biến thể truy vấn, hợp nhất RRF trước rerank; mặc định tắt)
+- Multi-hop: bật/tắt + Depth + Fanout (+ Fanout-1st, Budget ms)
+- Citations: panel hiển thị chú thích [n] theo nguồn/ngữ cảnh
 - DB: chọn DB, tạo/xóa DB
 - Chat: chọn session, New/Rename/Delete, checkbox “Lưu hội thoại” (auto-save Q/A)
 
@@ -90,6 +92,50 @@ Provider switch (Ollama/OpenAI)
   - OPENAI_MODEL=gpt-4o-mini (mặc định)
   - OPENAI_CONNECT_TIMEOUT, OPENAI_READ_TIMEOUT, OPENAI_MAX_RETRIES, OPENAI_RETRY_BACKOFF
 - Ghi chú bảo mật: Quản lý khóa qua ENV, không echo/log giá trị khóa. Không commit khóa vào repo.
+
+Citations [n]
+- Backend yêu cầu LLM chèn [n] tương ứng với [CTX n] khi trả lời.
+- UI sẽ parse các marker [1], [2], … và hiển thị “Citations panel” gồm nguồn (source) và chunk.
+- Non-stream: API /api/query trả về metadatas[] cùng answer để render citations.
+- Streaming: server gửi header đặc biệt ở đầu stream: [[CTXJSON]]{json}\n chứa { contexts, metadatas, db } để client render sớm; phần answer stream nối tiếp sau đó.
+
+Query Rewrite (UI + API)
+- UI: bật “Rewrite” và đặt n (1..5). Mặc định tắt để tránh tăng chi phí CPU.
+- Hành vi: sinh n biến thể truy vấn, hợp nhất kết quả retrieval bằng RRF trước khi rerank/sinh câu trả lời.
+- API:
+  - /api/query, /api/stream_query body có các trường:
+    rewrite_enable: boolean, rewrite_n: number
+  - Ví dụ body:
+```
+{
+  "query": "Bitsness là gì?",
+  "method": "hybrid",
+  "k": 5,
+  "rewrite_enable": true,
+  "rewrite_n": 2
+}
+```
+
+Multi-hop nâng cao (budget_ms, fanout_first_hop)
+- UI: khi bật Multi-hop sẽ hiện thêm các tham số:
+  - Depth, Fanout (mặc định 2)
+  - Fanout-1st: fanout riêng cho hop đầu (1..5)
+  - Budget(ms): giới hạn thời gian (ước lượng) cho toàn bộ quá trình decompose + retrieve; nếu sắp hết budget có thể cắt bớt sub-questions.
+- API:
+  - /api/multihop_query, /api/stream_multihop_query body chấp nhận:
+    fanout_first_hop: number, budget_ms: number
+  - Ví dụ body:
+```
+{
+  "query": "Giải thích A liên quan B",
+  "method": "hybrid",
+  "k": 5,
+  "depth": 2,
+  "fanout": 2,
+  "fanout_first_hop": 1,
+  "budget_ms": 200
+}
+```
 
 Cấu hình (tùy chọn .env):
 - OLLAMA_BASE_URL=http://localhost:11434
