@@ -52,6 +52,7 @@ Chạy Playwright e2e
     npm run test:e2e
 
 UI — các điều khiển chính
+- Provider: Ollama | OpenAI (generate/stream dùng provider đã chọn; Embeddings luôn dùng Ollama/local)
 - Phương pháp: vector | bm25 | hybrid (+ w BM25)
 - Reranker: bật/tắt + Top-N
 - Multi-hop: bật/tắt + Depth + Fanout
@@ -76,6 +77,19 @@ Chat advanced (Search / Export / Delete All)
   - Export JSON: curl "http://127.0.0.1:8000/api/chats/<CHAT_ID>/export?db=<DB>&format=json"
   - Export MD: curl "http://127.0.0.1:8000/api/chats/<CHAT_ID>/export?db=<DB>&format=md"
   - Xóa tất cả: curl -X DELETE "http://127.0.0.1:8000/api/chats?db=<DB>"
+
+Provider switch (Ollama/OpenAI)
+- UI: chọn Provider ở thanh điều khiển (mặc định: Ollama). Embeddings luôn chạy bằng Ollama để đảm bảo local & không cần re-index.
+- API nhanh:
+  - GET /api/provider → { provider }
+  - POST /api/provider { name: "ollama" | "openai" }
+  - Per-request override: thêm provider vào body của /api/query, /api/stream_query, /api/multihop_query, /api/stream_multihop_query
+- Biến môi trường:
+  - PROVIDER=ollama|openai (mặc định ollama)
+  - OPENAI_API_KEY={{OPENAI_API_KEY}} (bắt buộc khi dùng OpenAI)
+  - OPENAI_MODEL=gpt-4o-mini (mặc định)
+  - OPENAI_CONNECT_TIMEOUT, OPENAI_READ_TIMEOUT, OPENAI_MAX_RETRIES, OPENAI_RETRY_BACKOFF
+- Ghi chú bảo mật: Quản lý khóa qua ENV, không echo/log giá trị khóa. Không commit khóa vào repo.
 
 Cấu hình (tùy chọn .env):
 - OLLAMA_BASE_URL=http://localhost:11434

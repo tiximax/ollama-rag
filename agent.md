@@ -21,6 +21,7 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - Multi-DB: tách DB theo thư mục data/kb/{db_name}/ và chuyển DB từ UI
 - Multi-hop: decompose → retrieve → synthesize (API + streaming), có fallback single-hop khi không có context
 - Chat Sessions: lưu theo DB (data/kb/{db}/chats/{id}.json), CRUD API, auto-save Q/A từ query/stream, UI chọn/tạo/đổi tên/xóa, bật/tắt lưu
+- Provider switch: Ollama/OpenAI (mặc định Ollama). Embeddings luôn dùng Ollama/local.
 - Tính năng UI: nhập câu hỏi, đặt số CTX k, bật Streaming; hiển thị các CTX; chọn phương pháp, reranker, multi-hop, DB
 - Script: scripts/ingest.py, scripts/run_server.ps1, scripts/pull_models.ps1
 - Deploy: Cloudflare Tunnel (deploy/README.md)
@@ -57,6 +58,7 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - [x] Multi-hop Retrieval (engine + API + UI) + fallback single-hop
 - [x] Tối ưu hiệu năng local + thêm test:e2e:light (bỏ qua @heavy)
 - [x] Chat Sessions (per-DB) + auto-save Q/A + UI quản lý
+- [x] Provider switch (Ollama/OpenAI) + API /api/provider + UI chọn provider
 
 ## Hướng dẫn sử dụng nhanh
 - Kéo models:
@@ -86,6 +88,17 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - Export JSON: GET /api/chats/{id}/export?db=<DB>&format=json
   - Export MD: GET /api/chats/{id}/export?db=<DB>&format=md
   - Xóa toàn bộ: DELETE /api/chats?db=<DB>
+
+#### Provider switch (Ollama/OpenAI)
+- UI: chọn Provider ở thanh điều khiển; mặc định Ollama. Embeddings luôn dùng Ollama/local để đảm bảo private & không re-index.
+- API nhanh:
+  - GET /api/provider → { provider }
+  - POST /api/provider { name: "ollama" | "openai" }
+  - Per-request: gửi provider trong body của /api/query, /api/stream_query, /api/multihop_query, /api/stream_multihop_query
+- ENV:
+  - PROVIDER=ollama|openai (mặc định ollama)
+  - OPENAI_API_KEY, OPENAI_MODEL, OPENAI_* timeout/retry
+- Bảo mật: Quản lý secret qua ENV, không log/echo giá trị.
 - Thiết lập biến môi trường trước khi chạy test (pwsh/Windows):
   - $env:LLM_MODEL = "tinyllama"
   - $env:OLLAMA_NUM_THREAD = "2"
@@ -109,6 +122,7 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - PowerShell -ExecutionPolicy Bypass -File .\deploy\cloudflared\start-local.ps1 -TunnelId <TUNNEL_ID>
 
 ## Tiến trình gần nhất
+- 2025-09-21: Thêm Provider switch (OpenAI/Ollama), UI dropdown, API /api/provider; giữ Embeddings bằng Ollama. Test e2e (light) không hồi quy.
 - 2025-09-21: Hoàn tất bản web app cơ bản chạy với Ollama, ingest TXT/PDF/DOCX, streaming, top-k.
 - 2025-09-21: Thêm bộ file triển khai Cloudflare Tunnel (Docker Compose + native) và hướng dẫn.
 - 2025-09-21: Server local hoạt động tại http://127.0.0.1:8000; sẵn sàng chạy tunnel nếu có CF_TUNNEL_TOKEN.
