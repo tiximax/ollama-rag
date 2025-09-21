@@ -49,6 +49,8 @@ class QueryRequest(BaseModel):
     bm25_weight: float = 0.5
     rerank_enable: bool = False
     rerank_top_n: int = 10
+    rrf_enable: bool | None = None
+    rrf_k: int | None = None
     provider: Optional[str] = None
     chat_id: Optional[str] = None
     save_chat: bool = True
@@ -64,6 +66,8 @@ class MultiHopQueryRequest(BaseModel):
     rerank_top_n: int = 10
     depth: int = 2
     fanout: int = 2
+    rrf_enable: bool | None = None
+    rrf_k: int | None = None
     provider: Optional[str] = None
     chat_id: Optional[str] = None
     save_chat: bool = True
@@ -83,6 +87,8 @@ def api_query(req: QueryRequest):
             rerank_enable=req.rerank_enable,
             rerank_top_n=req.rerank_top_n,
             provider=req.provider,
+            rrf_enable=req.rrf_enable,
+            rrf_k=req.rrf_k,
         )
         # Lưu chat nếu cần
         if req.save_chat and req.chat_id:
@@ -107,7 +113,7 @@ def api_stream_query(req: QueryRequest):
             if req.method == "bm25":
                 retrieved = engine.retrieve_bm25(req.query, top_k=base_k)
             elif req.method == "hybrid":
-                retrieved = engine.retrieve_hybrid(req.query, top_k=base_k, bm25_weight=req.bm25_weight)
+                retrieved = engine.retrieve_hybrid(req.query, top_k=base_k, bm25_weight=req.bm25_weight, rrf_enable=req.rrf_enable, rrf_k=req.rrf_k)
             else:
                 retrieved = engine.retrieve(req.query, top_k=base_k)
             ctx_docs = retrieved["documents"]
@@ -154,8 +160,10 @@ def api_multihop_query(req: MultiHopQueryRequest):
             bm25_weight=req.bm25_weight,
             rerank_enable=req.rerank_enable,
             rerank_top_n=req.rerank_top_n,
+            skip_answer=True,
+            rrf_enable=req.rrf_enable,
+            rrf_k=req.rrf_k,
         )
-        # Lưu chat nếu cần
         if req.save_chat and req.chat_id:
             try:
                 chat_store.append_pair(engine.db_name, req.chat_id, req.query, result.get("answer", ""), {"metas": result.get("metadatas", [])})
@@ -193,7 +201,7 @@ def api_stream_multihop_query(req: MultiHopQueryRequest):
                 if req.method == "bm25":
                     retrieved = engine.retrieve_bm25(req.query, top_k=base_k)
                 elif req.method == "hybrid":
-                    retrieved = engine.retrieve_hybrid(req.query, top_k=base_k, bm25_weight=req.bm25_weight)
+                    retrieved = engine.retrieve_hybrid(req.query, top_k=base_k, bm25_weight=req.bm25_weight, rrf_enable=req.rrf_enable, rrf_k=req.rrf_k)
                 else:
                     retrieved = engine.retrieve(req.query, top_k=base_k)
                 ctx_docs = retrieved.get("documents", [])

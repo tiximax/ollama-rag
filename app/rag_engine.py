@@ -27,6 +27,10 @@ DEFAULT_DB = os.getenv("DB_NAME", "default")
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
 
+# RRF config
+RRF_ENABLE_DEFAULT = os.getenv("RRF_ENABLE", "1").strip() not in ("0", "false", "False")
+RRF_K_DEFAULT = int(os.getenv("RRF_K", "60"))
+
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
     text = text.replace("\r\n", "\n")
@@ -324,7 +328,8 @@ class RagEngine:
     def _make_key(doc: str, meta: Dict[str, Any]) -> Tuple[str, Any, Any]:
         return (meta.get("source", ""), meta.get("chunk", -1), len(doc))
 
-    def retrieve_hybrid(self, query: str, top_k: int = 5, bm25_weight: float = 0.5) -> Dict[str, Any]:
+    def retrieve_hybrid(self, query: str, top_k: int = 5, bm25_weight: float = 0.5, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None) -> Dict[str, Any]:
+        # Fetch candidates
         vec = self.retrieve(query, top_k=top_k)
         bm = self.retrieve_bm25(query, top_k=max(top_k, 10))  # get a bit more for better merge
 
@@ -339,28 +344,64 @@ class RagEngine:
         b_scores: List[float] = bm.get("scores", [])
         b_norm = self._min_max(b_scores)
 
-        # Build candidate map
-        cand: Dict[Tuple[str, Any, Any], Dict[str, Any]] = {}
-        for doc, meta, s in zip(v_docs, v_metas, v_norm):
-            key = self._make_key(doc, meta)
-            cand[key] = {"doc": doc, "meta": meta, "v": s, "b": 0.0}
-        for doc, meta, s in zip(b_docs, b_metas, b_norm):
-            key = self._make_key(doc, meta)
-            if key in cand:
-                cand[key]["b"] = s
-            else:
-                cand[key] = {"doc": doc, "meta": meta, "v": 0.0, "b": s}
+        # Decide fusion strategy
+        use_rrf = RRF_ENABLE_DEFAULT if rrf_enable is None else bool(rrf_enable)
+        rrf_k_val = RRF_K_DEFAULT if rrf_k is None else int(rrf_k)
 
-        combined = []
-        w = max(0.0, min(1.0, float(bm25_weight)))
-        for item in cand.values():
-            score = (1.0 - w) * item["v"] + w * item["b"]
-            combined.append((score, item["doc"], item["meta"]))
-        combined.sort(key=lambda x: x[0], reverse=True)
-
-        docs = [d for _, d, _ in combined[:top_k]]
-        metas = [m for _, _, m in combined[:top_k]]
-        return {"documents": docs, "metadatas": metas}
+        if use_rrf:
+            # Build ranks
+            ranks_vec: Dict[Tuple[str, Any, Any], int] = {}
+            for idx, (doc, meta) in enumerate(zip(v_docs, v_metas), start=1):
+                ranks_vec[self._make_key(doc, meta)] = idx
+            ranks_bm: Dict[Tuple[str, Any, Any], int] = {}
+            for idx, (doc, meta) in enumerate(zip(b_docs, b_metas), start=1):
+                ranks_bm[self._make_key(doc, meta)] = idx
+            # Union keys
+            keys = set(ranks_vec.keys()) | set(ranks_bm.keys())
+            combined = []
+            for key in keys:
+                r1 = ranks_vec.get(key)
+                r2 = ranks_bm.get(key)
+                score = 0.0
+                if r1 is not None:
+                    score += 1.0 / (rrf_k_val + r1)
+                if r2 is not None:
+                    score += 1.0 / (rrf_k_val + r2)
+                # pick representative doc/meta (prefer vector side if available)
+                if key in ranks_vec:
+                    i = r1 - 1  # type: ignore
+                    doc = v_docs[i]
+                    meta = v_metas[i]
+                else:
+                    i = r2 - 1  # type: ignore
+                    doc = b_docs[i]
+                    meta = b_metas[i]
+                combined.append((score, doc, meta))
+            combined.sort(key=lambda x: x[0], reverse=True)
+            docs = [d for _, d, _ in combined[:top_k]]
+            metas = [m for _, _, m in combined[:top_k]]
+            return {"documents": docs, "metadatas": metas}
+        else:
+            # Weighted normalization merge (legacy)
+            cand: Dict[Tuple[str, Any, Any], Dict[str, Any]] = {}
+            for doc, meta, s in zip(v_docs, v_metas, v_norm):
+                key = self._make_key(doc, meta)
+                cand[key] = {"doc": doc, "meta": meta, "v": s, "b": 0.0}
+            for doc, meta, s in zip(b_docs, b_metas, b_norm):
+                key = self._make_key(doc, meta)
+                if key in cand:
+                    cand[key]["b"] = s
+                else:
+                    cand[key] = {"doc": doc, "meta": meta, "v": 0.0, "b": s}
+            combined = []
+            w = max(0.0, min(1.0, float(bm25_weight)))
+            for item in cand.values():
+                score = (1.0 - w) * item["v"] + w * item["b"]
+                combined.append((score, item["doc"], item["meta"]))
+            combined.sort(key=lambda x: x[0], reverse=True)
+            docs = [d for _, d, _ in combined[:top_k]]
+            metas = [m for _, _, m in combined[:top_k]]
+            return {"documents": docs, "metadatas": metas}
 
     # ===== Prompt & Answer =====
     def build_prompt(self, question: str, context_docs: List[str]) -> str:
@@ -417,13 +458,13 @@ class RagEngine:
         llm = self._get_llm(provider)
         return llm.generate_stream(prompt)
 
-    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10, provider: Optional[str] = None) -> Dict[str, Any]:
+    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10, provider: Optional[str] = None, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None) -> Dict[str, Any]:
         method = (method or "vector").lower()
         base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
         if method == "bm25":
             retrieved = self.retrieve_bm25(question, top_k=base_k)
         elif method == "hybrid":
-            retrieved = self.retrieve_hybrid(question, top_k=base_k, bm25_weight=bm25_weight)
+            retrieved = self.retrieve_hybrid(question, top_k=base_k, bm25_weight=bm25_weight, rrf_enable=rrf_enable, rrf_k=rrf_k)
         else:
             retrieved = self.retrieve(question, top_k=base_k)
         docs = retrieved.get("documents", [])
@@ -488,6 +529,8 @@ class RagEngine:
         rerank_enable: bool = False,
         rerank_top_n: int = 10,
         skip_answer: bool = False,
+        rrf_enable: Optional[bool] = None,
+        rrf_k: Optional[int] = None,
     ) -> Dict[str, Any]:
         depth = max(1, min(int(depth or 1), 3))
         fanout = max(1, min(int(fanout or 1), 3))
@@ -510,7 +553,7 @@ class RagEngine:
                 if method == "bm25":
                     retrieved = self.retrieve_bm25(sq, top_k=base_k)
                 elif method == "hybrid":
-                    retrieved = self.retrieve_hybrid(sq, top_k=base_k, bm25_weight=bm25_weight)
+                    retrieved = self.retrieve_hybrid(sq, top_k=base_k, bm25_weight=bm25_weight, rrf_enable=rrf_enable, rrf_k=rrf_k)
                 else:
                     retrieved = self.retrieve(sq, top_k=base_k)
                 docs = retrieved.get("documents", [])
