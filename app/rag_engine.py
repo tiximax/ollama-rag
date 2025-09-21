@@ -1,6 +1,7 @@
 import os
 import uuid
 import re
+import shutil
 from typing import List, Dict, Any, Sequence, Optional, Tuple
 
 from dotenv import load_dotenv
@@ -18,7 +19,9 @@ except Exception:  # pragma: no cover
 
 load_dotenv()
 
-DEFAULT_PERSIST = os.getenv("PERSIST_DIR", "data/chroma")
+DEFAULT_PERSIST = os.getenv("PERSIST_DIR")
+PERSIST_ROOT = os.getenv("PERSIST_ROOT", "data/kb")
+DEFAULT_DB = os.getenv("DB_NAME", "default")
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
 
@@ -75,16 +78,22 @@ class OllamaEmbeddingFunction:
 
 
 class RagEngine:
-    def __init__(self, persist_dir: str = DEFAULT_PERSIST, collection_name: str = "docs"):
-        self.persist_dir = persist_dir
-        os.makedirs(self.persist_dir, exist_ok=True)
-        # ChromaDB PersistentClient (new client API)
-        self.client = PersistentClient(path=self.persist_dir)
+    def __init__(self, persist_dir: Optional[str] = DEFAULT_PERSIST, collection_name: str = "docs", persist_root: Optional[str] = None, db_name: Optional[str] = None):
+        # Determine persist_root and db_name
+        if persist_dir:
+            root = os.path.dirname(persist_dir)
+            base = os.path.basename(persist_dir)
+            self.persist_root = root if root else (persist_root or PERSIST_ROOT)
+            self.db_name = base if base else (db_name or DEFAULT_DB)
+        else:
+            self.persist_root = persist_root or PERSIST_ROOT
+            self.db_name = db_name or DEFAULT_DB
+        self.collection_name = collection_name
+
         self.ollama = OllamaClient()
-        self.collection = self.client.get_or_create_collection(
-            name=collection_name,
-            embedding_function=OllamaEmbeddingFunction(self.ollama),
-        )
+        # Initialize storage and client
+        self._init_client()
+
         # BM25 state (in-memory)
         self._bm25 = None  # type: ignore
         self._bm25_docs: List[str] = []
@@ -93,6 +102,74 @@ class RagEngine:
         # Reranker
         self._bge_rr: Optional[BgeOnnxReranker] = None
         self._embed_rr: Optional[SimpleEmbedReranker] = None
+
+    # ===== Multi-DB =====
+    @property
+    def persist_dir(self) -> str:
+        return os.path.join(self.persist_root, self.db_name)
+
+    def _init_client(self) -> None:
+        os.makedirs(self.persist_dir, exist_ok=True)
+        self.client = PersistentClient(path=self.persist_dir)
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name,
+            embedding_function=OllamaEmbeddingFunction(self.ollama),
+        )
+        # invalidate bm25 on (re)init
+        self._bm25 = None
+
+    def list_dbs(self) -> List[str]:
+        if not os.path.isdir(self.persist_root):
+            return []
+        names = []
+        for entry in os.listdir(self.persist_root):
+            p = os.path.join(self.persist_root, entry)
+            if os.path.isdir(p):
+                names.append(entry)
+        names.sort()
+        return names
+
+    @staticmethod
+    def _valid_db_name(name: str) -> bool:
+        """Allow only safe names to avoid path traversal or invalid folders.
+        Accept [A-Za-z0-9_.-], length 1..64.
+        """
+        if not isinstance(name, str):
+            return False
+        if not (1 <= len(name) <= 64):
+            return False
+        return re.fullmatch(r"[A-Za-z0-9_.-]+", name) is not None
+
+    def use_db(self, name: str) -> str:
+        if not self._valid_db_name(name):
+            raise ValueError("Invalid db name")
+        if name == self.db_name:
+            return self.db_name
+        self.db_name = name
+        self._init_client()
+        return self.db_name
+
+    def create_db(self, name: str) -> str:
+        if not self._valid_db_name(name):
+            raise ValueError("Invalid db name")
+        p = os.path.join(self.persist_root, name)
+        if os.path.exists(p):
+            raise FileExistsError(f"DB '{name}' already exists")
+        os.makedirs(p, exist_ok=False)
+        return name
+
+    def delete_db(self, name: str) -> None:
+        if not self._valid_db_name(name):
+            raise ValueError("Invalid db name")
+        p = os.path.join(self.persist_root, name)
+        if not os.path.exists(p):
+            return
+        # If deleting current DB, switch to DEFAULT_DB (create if needed)
+        deleting_current = (name == self.db_name)
+        shutil.rmtree(p, ignore_errors=True)
+        if deleting_current:
+            self.db_name = DEFAULT_DB
+            self._init_client()
 
     # ===== Ingest =====
     def ingest_texts(self, texts: List[str], metadatas: List[Dict[str, Any]] | None = None) -> int:

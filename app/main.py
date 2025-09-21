@@ -10,7 +10,9 @@ from .rag_engine import RagEngine
 
 app = FastAPI(title="Ollama RAG App")
 
-# Khởi tạo engine với thư mục persist mặc định
+# Khởi tạo engine với thiết lập Multi-DB (tương thích ngược)
+# Nếu PERSIST_DIR được set (ví dụ data/chroma) sẽ dùng như db mặc định trong root của nó
+# Nếu không, mặc định PERSIST_ROOT=data/kb và DB_NAME=default
 engine = RagEngine(persist_dir=os.path.join("data", "chroma"))
 
 # Phục vụ web UI
@@ -24,13 +26,16 @@ def root():
 
 class IngestRequest(BaseModel):
     paths: List[str] = ["data/docs"]
+    db: str | None = None
 
 
 @app.post("/api/ingest")
 def api_ingest(req: IngestRequest):
     try:
+        if req.db:
+            engine.use_db(req.db)
         count = engine.ingest_paths(req.paths)
-        return {"status": "ok", "chunks_indexed": count}
+        return {"status": "ok", "chunks_indexed": count, "db": engine.db_name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -42,11 +47,14 @@ class QueryRequest(BaseModel):
     bm25_weight: float = 0.5
     rerank_enable: bool = False
     rerank_top_n: int = 10
+    db: str | None = None
 
 
 @app.post("/api/query")
 def api_query(req: QueryRequest):
     try:
+        if req.db:
+            engine.use_db(req.db)
         result = engine.answer(
             req.query,
             top_k=req.k,
@@ -55,6 +63,7 @@ def api_query(req: QueryRequest):
             rerank_enable=req.rerank_enable,
             rerank_top_n=req.rerank_top_n,
         )
+        result["db"] = engine.db_name
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -64,6 +73,8 @@ def api_query(req: QueryRequest):
 def api_stream_query(req: QueryRequest):
     try:
         def gen():
+            if req.db:
+                engine.use_db(req.db)
             # Lấy contexts theo method đã chọn, có thể áp dụng reranker trước khi stream
             base_k = max(req.k, req.rerank_top_n if req.rerank_enable else req.k)
             if req.method == "bm25":
@@ -81,10 +92,56 @@ def api_stream_query(req: QueryRequest):
                 ctx_docs = ctx_docs[:req.k]
                 metas = metas[:req.k]
             # Gửi contexts trước dưới dạng JSON đánh dấu
-            yield "[[CTXJSON]]" + json.dumps({"contexts": ctx_docs, "metadatas": metas}) + "\n"
+            header = {"contexts": ctx_docs, "metadatas": metas, "db": engine.db_name}
+            yield "[[CTXJSON]]" + json.dumps(header) + "\n"
             prompt = engine.build_prompt(req.query, ctx_docs)
-            for chunk in engine.ollama.generate_stream(prompt):
-                yield chunk
+            try:
+                for chunk in engine.ollama.generate_stream(prompt):
+                    yield chunk
+            except Exception:
+                # Kết thúc stream nhẹ nhàng nếu LLM stream gặp lỗi kết nối/timeout
+                return
         return StreamingResponse(gen(), media_type="text/plain")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Multi-DB APIs =====
+class DbName(BaseModel):
+    name: str
+
+
+@app.get("/api/dbs")
+def api_list_dbs():
+    try:
+        return {"current": engine.db_name, "dbs": engine.list_dbs()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/dbs/use")
+def api_use_db(req: DbName):
+    try:
+        current = engine.use_db(req.name)
+        return {"current": current, "dbs": engine.list_dbs()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/dbs/create")
+def api_create_db(req: DbName):
+    try:
+        engine.create_db(req.name)
+        return {"status": "ok", "current": engine.db_name, "dbs": engine.list_dbs()}
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/dbs/{name}")
+def api_delete_db(name: str):
+    try:
+        engine.delete_db(name)
+        return {"status": "ok", "current": engine.db_name, "dbs": engine.list_dbs()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

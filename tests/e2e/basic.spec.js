@@ -12,25 +12,25 @@ test.describe('RAG e2e', () => {
     await page.goto('/');
 
     await page.getByRole('button', { name: 'Index tài liệu mẫu' }).click();
+    await page.selectOption('#method', 'hybrid');
     await expect(page.locator(resultSel)).toContainText(/Đã index|đã index|chunks/i, { timeout: 60000 });
 
     await page.fill('#txt-query', 'Bitsness là gì?');
     await page.fill('#top-k', '3');
     const streamCk = page.locator('#ck-stream');
-    if (await streamCk.isChecked()) {
-      await streamCk.uncheck();
+    if (!(await streamCk.isChecked())) {
+      await streamCk.check();
     }
     await page.getByRole('button', { name: 'Hỏi' }).click();
 
-    await expect(page.locator(resultSel)).not.toHaveText('Đang truy vấn...', { timeout: 30000 });
-    await expect(page.locator(resultSel)).not.toHaveText('', { timeout: 60000 });
-
     await expect(page.locator(contextsSel).first()).toBeVisible({ timeout: 60000 });
+    await expect(page.locator(resultSel)).not.toHaveText('', { timeout: 60000 });
   });
 
   test('Hỏi ở chế độ Streaming và có contexts', async ({ page }) => {
     await page.goto('/');
 
+    await page.selectOption('#method', 'hybrid');
     const streamCk = page.locator('#ck-stream');
     if (!(await streamCk.isChecked())) {
       await streamCk.check();

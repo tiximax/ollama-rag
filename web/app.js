@@ -12,6 +12,80 @@ const bm25Val = document.getElementById('bm25-weight-val');
 const rerankCk = document.getElementById('ck-rerank');
 const rerankTopWrap = document.getElementById('rerank-topn-wrap');
 const rerankTopN = document.getElementById('rerank-topn');
+const dbSelect = document.getElementById('db-select');
+const dbNewName = document.getElementById('db-new-name');
+const dbCreateBtn = document.getElementById('btn-db-create');
+const dbDeleteBtn = document.getElementById('btn-db-delete');
+
+async function loadDbs() {
+  try {
+    const resp = await fetch('/api/dbs');
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không tải được DBs');
+    const { current, dbs } = data;
+    dbSelect.innerHTML = '';
+    (dbs || []).forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      if (name === current) opt.selected = true;
+      dbSelect.appendChild(opt);
+    });
+  } catch (e) {
+    console.error('loadDbs error', e);
+  }
+}
+
+async function useDb(name) {
+  try {
+    const resp = await fetch('/api/dbs/use', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không thể đổi DB');
+    await loadDbs();
+  } catch (e) {
+    alert('Lỗi đổi DB: ' + e);
+  }
+}
+
+async function createDb() {
+  const name = (dbNewName.value || '').trim();
+  if (!name) {
+    alert('Nhập tên DB mới');
+    return;
+  }
+  try {
+    const resp = await fetch('/api/dbs/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không thể tạo DB');
+    dbNewName.value = '';
+    await loadDbs();
+    dbSelect.value = name;
+    await useDb(name);
+  } catch (e) {
+    alert('Lỗi tạo DB: ' + e);
+  }
+}
+
+async function deleteDb() {
+  const name = dbSelect.value;
+  if (!name) return;
+  try {
+    const resp = await fetch('/api/dbs/' + encodeURIComponent(name), { method: 'DELETE' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không thể xóa DB');
+    await loadDbs();
+  } catch (e) {
+    alert('Lỗi xóa DB: ' + e);
+  }
+}
 
 async function ingest() {
   resultDiv.textContent = 'Đang index tài liệu...';
@@ -19,7 +93,7 @@ async function ingest() {
     const resp = await fetch('/api/ingest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paths: ['data/docs'] })
+      body: JSON.stringify({ paths: ['data/docs'], db: dbSelect.value || null })
     });
     const data = await resp.json();
     if (resp.ok) {
@@ -54,7 +128,7 @@ async function ask() {
       const resp = await fetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n })
+        body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, db: dbSelect.value || null })
       });
       const data = await resp.json();
       if (resp.ok) {
@@ -79,7 +153,7 @@ async function askStreaming(q, k, method, bm25_weight) {
   const resp = await fetch('/api/stream_query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n })
+    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, db: dbSelect.value || null })
   });
   if (!resp.ok || !resp.body) {
     resultDiv.textContent = `Streaming thất bại: ${resp.status}`;
@@ -89,35 +163,39 @@ async function askStreaming(q, k, method, bm25_weight) {
   const decoder = new TextDecoder();
   let answer = '';
   let ctxHandled = false;
+  let buffer = '';
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     const chunk = decoder.decode(value, { stream: true });
+    buffer += chunk;
 
     if (!ctxHandled) {
-      // xử lý gói contexts đầu tiên theo định dạng [[CTXJSON]]{json}\n
-      if (chunk.startsWith('[[CTXJSON]]')) {
-        const idx = chunk.indexOf('\n');
-        const header = chunk.substring(0, idx);
-        const jsonStr = header.replace('[[CTXJSON]]', '');
+      const tag = '[[CTXJSON]]';
+      const tagIdx = buffer.indexOf(tag);
+      const nlIdx = buffer.indexOf('\n', tagIdx >= 0 ? tagIdx : 0);
+      if (tagIdx >= 0 && nlIdx > tagIdx) {
+        const header = buffer.substring(tagIdx, nlIdx);
+        const jsonStr = header.replace(tag, '');
         try {
           const obj = JSON.parse(jsonStr);
           const ctxs = obj.contexts || [];
-          const blocks = ctxs.map((c, i) => `<div class="ctx"><strong>CTX ${i+1}</strong><pre>${escapeHtml(c)}</pre></div>`);
+          const blocks = ctxs.map((c, i) => `<div class=\"ctx\"><strong>CTX ${i+1}</strong><pre>${escapeHtml(c)}</pre></div>`);
           contextsDiv.innerHTML = blocks.join('');
         } catch {}
         ctxHandled = true;
-        const rest = chunk.substring(idx + 1);
-        if (rest) {
-          answer += rest;
-          resultDiv.textContent = answer;
-        }
+        buffer = buffer.substring(nlIdx + 1);
+      } else {
+        // chưa đủ header hoàn chỉnh
         continue;
       }
     }
 
-    answer += chunk;
-    resultDiv.textContent = answer;
+    if (buffer) {
+      answer += buffer;
+      resultDiv.textContent = answer;
+      buffer = '';
+    }
   }
 }
 
@@ -130,6 +208,17 @@ function escapeHtml(str) {
 
 ingestBtn.addEventListener('click', ingest);
 askBtn.addEventListener('click', ask);
+
+dbSelect.addEventListener('change', () => {
+  const name = dbSelect.value;
+  if (name) useDb(name);
+});
+
+dbCreateBtn.addEventListener('click', createDb);
+dbDeleteBtn.addEventListener('click', deleteDb);
+
+// init
+loadDbs();
 
 methodSel.addEventListener('change', () => {
   const m = methodSel.value;

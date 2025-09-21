@@ -10,6 +10,14 @@
     <div class="container">
       <h1>Ollama RAG App</h1>
       <div class="actions">
+        <div class="db-bar">
+          <label>DB:
+            <select id="db-select"></select>
+          </label>
+          <input id="db-new-name" type="text" placeholder="Tên DB mới" />
+          <button id="btn-db-create">Tạo DB</button>
+          <button id="btn-db-delete">Xóa DB</button>
+        </div>
         <button id="btn-ingest">Index tài liệu mẫu</button>
       </div>
       <div class="query">

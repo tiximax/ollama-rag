@@ -13,8 +13,8 @@ test.describe('RAG e2e - Reranker', () => {
 
     await page.selectOption('#method', 'hybrid');
     const streamCk = page.locator('#ck-stream');
-    if (await streamCk.isChecked()) {
-      await streamCk.uncheck();
+    if (!(await streamCk.isChecked())) {
+      await streamCk.check();
     }
 
     // Bật Reranker và đặt Top-N

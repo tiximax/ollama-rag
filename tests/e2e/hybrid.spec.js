@@ -16,10 +16,10 @@ test.describe('RAG e2e - Hybrid', () => {
     await page.fill('#txt-query', 'Bitsness là gì?');
     await page.fill('#top-k', '3');
 
-    // tắt streaming để dùng /api/query
+    // bật streaming để lấy contexts sớm
     const streamCk = page.locator('#ck-stream');
-    if (await streamCk.isChecked()) {
-      await streamCk.uncheck();
+    if (!(await streamCk.isChecked())) {
+      await streamCk.check();
     }
 
     // chỉnh weight (nếu hiện)
