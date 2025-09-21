@@ -20,6 +20,7 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - Reranker: BGE v2 m3 (ONNX) hoặc fallback cosine-embedding
 - Multi-DB: tách DB theo thư mục data/kb/{db_name}/ và chuyển DB từ UI
 - Multi-hop: decompose → retrieve → synthesize (API + streaming), có fallback single-hop khi không có context
+- Chat Sessions: lưu theo DB (data/kb/{db}/chats/{id}.json), CRUD API, auto-save Q/A từ query/stream, UI chọn/tạo/đổi tên/xóa, bật/tắt lưu
 - Tính năng UI: nhập câu hỏi, đặt số CTX k, bật Streaming; hiển thị các CTX; chọn phương pháp, reranker, multi-hop, DB
 - Script: scripts/ingest.py, scripts/run_server.ps1, scripts/pull_models.ps1
 - Deploy: Cloudflare Tunnel (deploy/README.md)
@@ -55,6 +56,7 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - [x] Desktop shell PyQt6 (khung, nhúng UI, cấu hình server, Start/Stop)
 - [x] Multi-hop Retrieval (engine + API + UI) + fallback single-hop
 - [x] Tối ưu hiệu năng local + thêm test:e2e:light (bỏ qua @heavy)
+- [x] Chat Sessions (per-DB) + auto-save Q/A + UI quản lý
 
 ## Hướng dẫn sử dụng nhanh
 - Kéo models:
@@ -68,6 +70,14 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - python .\\scripts\\ingest.py
 
 ### Chạy Playwright e2e (chế độ nhẹ khuyến nghị khi dev)
+
+#### Chat Sessions (API nhanh)
+- List: GET /api/chats?db=<DB>
+- Create: POST /api/chats { db?, name? }
+- Get: GET /api/chats/{id}?db=<DB>
+- Rename: PATCH /api/chats/{id}?db=<DB> { name }
+- Delete: DELETE /api/chats/{id}?db=<DB>
+- Lưu tự động: gửi chat_id và save_chat=true trong body /api/query, /api/stream_query, /api/multihop_query, /api/stream_multihop_query
 - Thiết lập biến môi trường trước khi chạy test (pwsh/Windows):
   - $env:LLM_MODEL = "tinyllama"
   - $env:OLLAMA_NUM_THREAD = "2"
@@ -100,6 +110,7 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - 2025-09-21: Ổn định gọi Ollama: thêm retry + backoff và timeout cho embeddings/generate (app/ollama_client.py). Biến môi trường: OLLAMA_CONNECT_TIMEOUT, OLLAMA_READ_TIMEOUT, OLLAMA_MAX_RETRIES, OLLAMA_RETRY_BACKOFF. Toàn bộ e2e tests PASS (6/6).
 - 2025-09-21: Thêm Multi-hop Retrieval (engine+API+UI) + fallback single-hop; thêm endpoints /api/multihop_query và /api/stream_multihop_query.
 - 2025-09-21: Gắn nhãn @heavy cho Multi-hop & Reranker; thêm script npm run test:e2e:light (bỏ qua @heavy). Hướng dẫn “chế độ nhẹ” bằng biến môi trường (LLM_MODEL=tinyllama, OLLAMA_NUM_THREAD=2, ...).
+- 2025-09-21: Thêm Chat Sessions (per-DB), CRUD API, auto-save Q/A trong query/stream; UI quản lý. Test e2e (light) PASS 5/5.
 
 ## Ghi chú
 - Khi thêm tính năng mới, theo rule: chạy test automation (MCP Playwright) và sửa cho đến khi pass.

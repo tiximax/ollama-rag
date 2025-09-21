@@ -56,6 +56,15 @@ UI — các điều khiển chính
 - Reranker: bật/tắt + Top-N
 - Multi-hop: bật/tắt + Depth + Fanout
 - DB: chọn DB, tạo/xóa DB
+- Chat: chọn session, New/Rename/Delete, checkbox “Lưu hội thoại” (auto-save Q/A)
+
+Chat Sessions (API nhanh)
+- GET /api/chats?db=<DB>
+- POST /api/chats { db?, name? }
+- GET /api/chats/{id}?db=<DB>
+- PATCH /api/chats/{id}?db=<DB> { name }
+- DELETE /api/chats/{id}?db=<DB>
+- Lưu tự động Q/A khi hỏi: trong body /api/query (và stream/multihop) thêm chat_id và save_chat=true
 
 Cấu hình (tùy chọn .env):
 - OLLAMA_BASE_URL=http://localhost:11434
