@@ -23,6 +23,8 @@ const chatDeleteBtn = document.getElementById('btn-chat-delete');
 const chatExportJsonBtn = document.getElementById('btn-chat-export-json');
 const chatExportMdBtn = document.getElementById('btn-chat-export-md');
 const chatDeleteAllBtn = document.getElementById('btn-chat-delete-all');
+const chatExportDbJsonBtn = document.getElementById('btn-chat-export-db-json');
+const chatExportDbMdBtn = document.getElementById('btn-chat-export-db-md');
 const chatSearchInput = document.getElementById('chat-search');
 const chatSearchBtn = document.getElementById('btn-chat-search');
 const saveChatCk = document.getElementById('ck-save-chat');
@@ -238,6 +240,15 @@ function downloadFile(name, content, mime) {
   URL.revokeObjectURL(url);
 }
 
+function downloadBlob(name, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 async function exportChat(format) {
   const id = chatSelect.value;
   if (!id) { alert('Chưa chọn chat'); return; }
@@ -259,6 +270,22 @@ async function exportChat(format) {
     }
   } catch (e) {
     alert('Lỗi export: ' + e);
+  }
+}
+
+async function exportDb(format) {
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    params.set('format', format);
+    const resp = await fetch('/api/chats/export_db?' + params.toString());
+    if (!resp.ok) throw new Error('Export DB thất bại');
+    const buf = await resp.arrayBuffer();
+    const blob = new Blob([buf], { type: 'application/zip' });
+    const name = `db-${dbSelect.value || 'default'}-${format}.zip`;
+    downloadBlob(name, blob);
+  } catch (e) {
+    alert('Lỗi export DB: ' + e);
   }
 }
 
@@ -496,6 +523,8 @@ chatDeleteBtn.addEventListener('click', deleteChat);
 chatDeleteAllBtn.addEventListener('click', deleteAllChats);
 chatExportJsonBtn.addEventListener('click', () => exportChat('json'));
 chatExportMdBtn.addEventListener('click', () => exportChat('md'));
+chatExportDbJsonBtn.addEventListener('click', () => exportDb('json'));
+chatExportDbMdBtn.addEventListener('click', () => exportDb('md'));
 chatSearchBtn.addEventListener('click', searchChats);
 
 // init

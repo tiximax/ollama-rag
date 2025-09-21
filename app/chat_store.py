@@ -3,6 +3,9 @@ import json
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+import io
+import zipfile
+import re
 
 ISO = "%Y-%m-%dT%H:%M:%S.%fZ"
 
@@ -163,6 +166,30 @@ class ChatStore:
         if data is None:
             return None
         return self.to_markdown(data)
+
+    def _slug(self, s: str) -> str:
+        s = s or ""
+        s = re.sub(r"[^A-Za-z0-9_.-]+", "_", s)
+        s = s.strip("_")
+        return s or "chat"
+
+    def export_db_zip(self, db_name: str, fmt: str = "json") -> bytes:
+        fmt = (fmt or "json").lower()
+        mem = io.BytesIO()
+        with zipfile.ZipFile(mem, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for summary in self.list(db_name):
+                chat = self.get(db_name, summary.get('id'))
+                if not chat:
+                    continue
+                base = self._slug(chat.get('name') or chat.get('id') or "chat")
+                if fmt == "md" or fmt == "markdown":
+                    content = self.to_markdown(chat)
+                    zf.writestr(f"{base}.md", content or "")
+                else:
+                    # default json
+                    zf.writestr(f"{base}.json", json.dumps(chat, ensure_ascii=False, indent=2))
+        mem.seek(0)
+        return mem.read()
 
     # ==== Search ====
     def search(self, db_name: str, query: str, limit_chats: int = 10, limit_matches: int = 5) -> List[Dict[str, Any]]:

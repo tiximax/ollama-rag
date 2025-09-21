@@ -262,6 +262,21 @@ def api_chats_search(q: str, db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/chats/export_db")
+def api_chats_export_db(format: str = "json", db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        data = chat_store.export_db_zip(engine.db_name, fmt=format)
+        from datetime import datetime
+        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        filename = f"{engine.db_name}-chats-{ts}.zip"
+        return Response(content=data, media_type="application/zip", headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/chats/{chat_id}")
 def api_chats_get(chat_id: str, db: Optional[str] = None):
     try:
