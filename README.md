@@ -1,5 +1,7 @@
 # Ollama RAG App
 
+[![e2e-light](https://github.com/tiximax/ollama-rag/actions/workflows/e2e.yml/badge.svg)](https://github.com/tiximax/ollama-rag/actions/workflows/e2e.yml)
+
 Ứng dụng RAG nhẹ sử dụng FastAPI + ChromaDB + Ollama (LLM + Embeddings), chạy web UI cục bộ.
 
 Tính năng:
