@@ -2,11 +2,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import os
 import json
 
 from .rag_engine import RagEngine
+from .chat_store import ChatStore
 
 app = FastAPI(title="Ollama RAG App")
 
@@ -14,6 +15,7 @@ app = FastAPI(title="Ollama RAG App")
 # Nếu PERSIST_DIR được set (ví dụ data/chroma) sẽ dùng như db mặc định trong root của nó
 # Nếu không, mặc định PERSIST_ROOT=data/kb và DB_NAME=default
 engine = RagEngine(persist_dir=os.path.join("data", "chroma"))
+chat_store = ChatStore(engine.persist_root)
 
 # Phục vụ web UI
 app.mount("/static", StaticFiles(directory="web"), name="static")
@@ -47,6 +49,8 @@ class QueryRequest(BaseModel):
     bm25_weight: float = 0.5
     rerank_enable: bool = False
     rerank_top_n: int = 10
+    chat_id: Optional[str] = None
+    save_chat: bool = True
     db: str | None = None
 
 
@@ -59,6 +63,8 @@ class MultiHopQueryRequest(BaseModel):
     rerank_top_n: int = 10
     depth: int = 2
     fanout: int = 2
+    chat_id: Optional[str] = None
+    save_chat: bool = True
     db: str | None = None
 
 
@@ -75,6 +81,12 @@ def api_query(req: QueryRequest):
             rerank_enable=req.rerank_enable,
             rerank_top_n=req.rerank_top_n,
         )
+        # Lưu chat nếu cần
+        if req.save_chat and req.chat_id:
+            try:
+                chat_store.append_pair(engine.db_name, req.chat_id, req.query, result.get("answer", ""), {"metas": result.get("metadatas", [])})
+            except Exception:
+                pass
         result["db"] = engine.db_name
         return result
     except Exception as e:
@@ -107,12 +119,20 @@ def api_stream_query(req: QueryRequest):
             header = {"contexts": ctx_docs, "metadatas": metas, "db": engine.db_name}
             yield "[[CTXJSON]]" + json.dumps(header) + "\n"
             prompt = engine.build_prompt(req.query, ctx_docs)
+            answer_buf = []
             try:
                 for chunk in engine.ollama.generate_stream(prompt):
+                    answer_buf.append(chunk)
                     yield chunk
             except Exception:
-                # Kết thúc stream nhẹ nhàng nếu LLM stream gặp lỗi kết nối/timeout
                 return
+            finally:
+                # Lưu chat nếu cần
+                if req.save_chat and req.chat_id:
+                    try:
+                        chat_store.append_pair(engine.db_name, req.chat_id, req.query, "".join(answer_buf), {"metas": metas})
+                    except Exception:
+                        pass
         return StreamingResponse(gen(), media_type="text/plain")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -132,6 +152,12 @@ def api_multihop_query(req: MultiHopQueryRequest):
             rerank_enable=req.rerank_enable,
             rerank_top_n=req.rerank_top_n,
         )
+        # Lưu chat nếu cần
+        if req.save_chat and req.chat_id:
+            try:
+                chat_store.append_pair(engine.db_name, req.chat_id, req.query, result.get("answer", ""), {"metas": result.get("metadatas", [])})
+            except Exception:
+                pass
         result["db"] = engine.db_name
         return result
     except Exception as e:
@@ -178,15 +204,86 @@ def api_stream_multihop_query(req: MultiHopQueryRequest):
             yield "[[CTXJSON]]" + json.dumps(header) + "\n"
             # Stream phần trả lời chính thức dựa trên prompt đã dùng
             prompt = engine.build_prompt(req.query, ctx_docs)
+            answer_buf = []
             try:
                 for chunk in engine.ollama.generate_stream(prompt):
+                    answer_buf.append(chunk)
                     yield chunk
             except Exception:
                 return
+            finally:
+                if req.save_chat and req.chat_id:
+                    try:
+                        chat_store.append_pair(engine.db_name, req.chat_id, req.query, "".join(answer_buf), {"metas": metas})
+                    except Exception:
+                        pass
         return StreamingResponse(gen(), media_type="text/plain")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ===== Chat APIs =====
+class ChatCreate(BaseModel):
+    db: Optional[str] = None
+    name: Optional[str] = None
+
+class ChatRename(BaseModel):
+    name: str
+
+@app.get("/api/chats")
+def api_chats_list(db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        return {"db": engine.db_name, "chats": chat_store.list(engine.db_name)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chats")
+def api_chats_create(req: ChatCreate):
+    try:
+        if req.db:
+            engine.use_db(req.db)
+        data = chat_store.create(engine.db_name, name=req.name)
+        return {"db": engine.db_name, "chat": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/chats/{chat_id}")
+def api_chats_get(chat_id: str, db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        data = chat_store.get(engine.db_name, chat_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/api/chats/{chat_id}")
+def api_chats_rename(chat_id: str, req: ChatRename, db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        data = chat_store.rename(engine.db_name, chat_id, req.name)
+        return data
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/chats/{chat_id}")
+def api_chats_delete(chat_id: str, db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        chat_store.delete(engine.db_name, chat_id)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ===== Multi-DB APIs =====
 class DbName(BaseModel):

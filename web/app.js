@@ -16,6 +16,11 @@ const dbSelect = document.getElementById('db-select');
 const dbNewName = document.getElementById('db-new-name');
 const dbCreateBtn = document.getElementById('btn-db-create');
 const dbDeleteBtn = document.getElementById('btn-db-delete');
+const chatSelect = document.getElementById('chat-select');
+const chatNewBtn = document.getElementById('btn-chat-new');
+const chatRenameBtn = document.getElementById('btn-chat-rename');
+const chatDeleteBtn = document.getElementById('btn-chat-delete');
+const saveChatCk = document.getElementById('ck-save-chat');
 const multihopCk = document.getElementById('ck-multihop');
 const multihopDepthWrap = document.getElementById('multihop-depth-wrap');
 const multihopFanoutWrap = document.getElementById('multihop-fanout-wrap');
@@ -92,6 +97,88 @@ async function deleteDb() {
   }
 }
 
+async function loadChats() {
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    const resp = await fetch('/api/chats?' + params.toString());
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không tải được chats');
+    const { chats } = data;
+    const prev = chatSelect.value;
+    chatSelect.innerHTML = '';
+    (chats || []).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name || c.id;
+      chatSelect.appendChild(opt);
+    });
+    // giữ nguyên lựa chọn cũ nếu còn
+    if (prev && [...chatSelect.options].some(o => o.value === prev)) {
+      chatSelect.value = prev;
+    }
+  } catch (e) {
+    console.error('loadChats error', e);
+  }
+}
+
+async function createChat() {
+  try {
+    const name = prompt('Tên chat mới:', 'New Chat') || undefined;
+    const resp = await fetch('/api/chats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ db: dbSelect.value || null, name })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không tạo được chat');
+    await loadChats();
+    if (data.chat && data.chat.id) {
+      chatSelect.value = data.chat.id;
+    }
+  } catch (e) {
+    alert('Lỗi tạo chat: ' + e);
+  }
+}
+
+async function renameChat() {
+  const id = chatSelect.value;
+  if (!id) return;
+  const name = prompt('Tên mới:', '') || '';
+  if (!name.trim()) return;
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    const resp = await fetch(`/api/chats/${encodeURIComponent(id)}?${params.toString()}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không đổi tên được chat');
+    await loadChats();
+    chatSelect.value = id;
+  } catch (e) {
+    alert('Lỗi rename chat: ' + e);
+  }
+}
+
+async function deleteChat() {
+  const id = chatSelect.value;
+  if (!id) return;
+  if (!confirm('Xóa chat này?')) return;
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    const resp = await fetch(`/api/chats/${encodeURIComponent(id)}?${params.toString()}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không xóa được chat');
+    await loadChats();
+  } catch (e) {
+    alert('Lỗi xóa chat: ' + e);
+  }
+}
+
 async function ingest() {
   resultDiv.textContent = 'Đang index tài liệu...';
   try {
@@ -127,18 +214,20 @@ async function ask() {
   contextsDiv.innerHTML = '';
 
   try {
+    const chat_id = chatSelect.value || null;
+    const save_chat = !!saveChatCk.checked;
     if (streaming) {
       if (multihopCk.checked) {
-        await askStreamingMH(q, k, method, bm25_weight);
+        await askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat);
       } else {
-        await askStreaming(q, k, method, bm25_weight);
+        await askStreaming(q, k, method, bm25_weight, chat_id, save_chat);
       }
     } else {
       if (multihopCk.checked) {
         const resp = await fetch('/api/multihop_query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), db: dbSelect.value || null })
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), chat_id, save_chat, db: dbSelect.value || null })
         });
         const data = await resp.json();
         if (resp.ok) {
@@ -155,7 +244,7 @@ async function ask() {
         const resp = await fetch('/api/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, db: dbSelect.value || null })
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, chat_id, save_chat, db: dbSelect.value || null })
         });
         const data = await resp.json();
         if (resp.ok) {
@@ -175,13 +264,13 @@ async function ask() {
   }
 }
 
-async function askStreaming(q, k, method, bm25_weight) {
+async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat) {
   const rerank_enable = !!rerankCk.checked;
   const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
   const resp = await fetch('/api/stream_query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, db: dbSelect.value || null })
+    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, chat_id, save_chat, db: dbSelect.value || null })
   });
   if (!resp.ok || !resp.body) {
     resultDiv.textContent = `Streaming thất bại: ${resp.status}`;
@@ -227,7 +316,7 @@ async function askStreaming(q, k, method, bm25_weight) {
   }
 }
 
-async function askStreamingMH(q, k, method, bm25_weight) {
+async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat) {
   const rerank_enable = !!rerankCk.checked;
   const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
   const depth = parseInt(hopDepth.value || '2', 10);
@@ -235,7 +324,7 @@ async function askStreamingMH(q, k, method, bm25_weight) {
   const resp = await fetch('/api/stream_multihop_query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth, fanout, db: dbSelect.value || null })
+    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth, fanout, chat_id, save_chat, db: dbSelect.value || null })
   });
   if (!resp.ok || !resp.body) {
     resultDiv.textContent = `Streaming thất bại: ${resp.status}`;
@@ -290,16 +379,20 @@ function escapeHtml(str) {
 ingestBtn.addEventListener('click', ingest);
 askBtn.addEventListener('click', ask);
 
-dbSelect.addEventListener('change', () => {
+dbSelect.addEventListener('change', async () => {
   const name = dbSelect.value;
-  if (name) useDb(name);
+  if (name) await useDb(name);
+  await loadChats();
 });
 
-dbCreateBtn.addEventListener('click', createDb);
-dbDeleteBtn.addEventListener('click', deleteDb);
+dbCreateBtn.addEventListener('click', async () => { await createDb(); await loadChats(); });
+dbDeleteBtn.addEventListener('click', async () => { await deleteDb(); await loadChats(); });
+chatNewBtn.addEventListener('click', createChat);
+chatRenameBtn.addEventListener('click', renameChat);
+chatDeleteBtn.addEventListener('click', deleteChat);
 
 // init
-loadDbs();
+loadDbs().then(loadChats);
 
 methodSel.addEventListener('change', () => {
   const m = methodSel.value;

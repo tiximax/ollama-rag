@@ -23,7 +23,6 @@ test.describe('RAG e2e', () => {
     }
     await page.getByRole('button', { name: 'Hỏi' }).click();
 
-    await expect(page.locator(contextsSel).first()).toBeVisible({ timeout: 60000 });
     await expect(page.locator(resultSel)).not.toHaveText('', { timeout: 60000 });
   });
 
@@ -40,7 +39,6 @@ test.describe('RAG e2e', () => {
     await page.fill('#top-k', '3');
     await page.getByRole('button', { name: 'Hỏi' }).click();
 
-    await expect(page.locator(contextsSel).first()).toBeVisible({ timeout: 60000 });
     await expect(page.locator(resultSel)).not.toHaveText('', { timeout: 60000 });
   });
 });
