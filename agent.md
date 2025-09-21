@@ -40,9 +40,9 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - [x] Ingest TXT/PDF/DOCX, chunking và lưu index
 - [x] Streaming + chọn top-k trên UI
 - [x] Tài liệu + file triển khai Cloudflare Tunnel (Docker + native)
-- [ ] Test e2e Playwright tối thiểu (MCP theo rule người dùng)
-- [ ] Hybrid Search (FAISS+BM25) + tham số hóa
-- [ ] Tích hợp Reranker BGE v2 (INT8)
+- [x] Test e2e Playwright tối thiểu (MCP theo rule người dùng)
+- [x] Hybrid Search (FAISS+BM25) + tham số hóa
+- [x] Tích hợp Reranker BGE v2 (INT8) (ưu tiên ONNX; fallback cosine embedding)
 - [ ] Multi-DB cơ bản (API + UI)
 - [ ] Desktop shell PyQt6 (khung, nhúng UI)
 
@@ -70,7 +70,9 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - 2025-09-21: Hoàn tất bản web app cơ bản chạy với Ollama, ingest TXT/PDF/DOCX, streaming, top-k.
 - 2025-09-21: Thêm bộ file triển khai Cloudflare Tunnel (Docker Compose + native) và hướng dẫn.
 - 2025-09-21: Server local hoạt động tại http://127.0.0.1:8000; sẵn sàng chạy tunnel nếu có CF_TUNNEL_TOKEN.
+- 2025-09-21: Thiết lập khung test e2e Playwright (globalSetup khởi động Ollama; webServer khởi động FastAPI). Chạy test thành công (5 cases pass, gồm Hybrid + Reranker).
 
 ## Ghi chú
 - Khi thêm tính năng mới, theo rule: chạy test automation (MCP Playwright) và sửa cho đến khi pass.
+- Reranker dùng BGE v2 m3 ONNX nếu tải được model; nếu không, fallback cosine embedding từ Ollama embeddings.
 - Không commit khóa/token; đặt trong biến môi trường.

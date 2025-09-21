@@ -1,0 +1,16 @@
+{
+  "name": "ollama-rag-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "playwright:install": "playwright install",
+    "playwright:install-deps": "playwright install --with-deps"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
