@@ -5,6 +5,7 @@ const topkInput = document.getElementById('top-k');
 const streamCk = document.getElementById('ck-stream');
 const resultDiv = document.getElementById('result');
 const contextsDiv = document.getElementById('contexts');
+const citationsDiv = document.getElementById('citations');
 const methodSel = document.getElementById('method');
 const bm25Wrap = document.getElementById('bm25-weight-wrap');
 const bm25Range = document.getElementById('bm25-weight');
@@ -306,6 +307,31 @@ async function searchChats() {
   }
 }
 
+function renderCitations(answerText, metas) {
+  try {
+    if (citationsDiv) citationsDiv.innerHTML = '';
+    if (!answerText || !Array.isArray(metas) || metas.length === 0 || !citationsDiv) return;
+    const re = /\[(\d+)\]/g;
+    const seen = new Set();
+    let m;
+    const items = [];
+    while ((m = re.exec(answerText)) !== null) {
+      const n = parseInt(m[1], 10);
+      if (!Number.isFinite(n)) continue;
+      if (n < 1 || n > metas.length) continue;
+      if (seen.has(n)) continue;
+      seen.add(n);
+      const meta = metas[n - 1] || {};
+      const src = meta.source || '(unknown)';
+      const chunk = typeof meta.chunk === 'number' ? `#${meta.chunk}` : '';
+      items.push(`<div class=\"citation\">[${n}] ${escapeHtml(src)} ${chunk}</div>`);
+    }
+    if (items.length) {
+      citationsDiv.innerHTML = `<div class=\"citations-title\">Citations</div>` + items.join('');
+    }
+  } catch {}
+}
+
 async function ingest() {
   resultDiv.textContent = 'Đang index tài liệu...';
   try {
@@ -361,10 +387,12 @@ async function ask() {
         if (resp.ok) {
           resultDiv.textContent = data.answer || '(Không có trả lời)';
           const ctxs = data.contexts || [];
+          const metas = data.metadatas || [];
           if (ctxs.length) {
             const blocks = ctxs.map((c, i) => `<div class=\"ctx\"><strong>CTX ${i+1}</strong><pre>${escapeHtml(c)}</pre></div>`);
             contextsDiv.innerHTML = blocks.join('');
           }
+          renderCitations(data.answer || '', metas);
         } else {
           resultDiv.textContent = `Lỗi truy vấn: ${data.detail}`;
         }
@@ -382,6 +410,8 @@ async function ask() {
             const blocks = ctxs.map((c, i) => `<div class=\"ctx\"><strong>CTX ${i+1}</strong><pre>${escapeHtml(c)}</pre></div>`);
             contextsDiv.innerHTML = blocks.join('');
           }
+          const metas = data.metadatas || [];
+          renderCitations(data.answer || '', metas);
         } else {
           resultDiv.textContent = `Lỗi truy vấn: ${data.detail}`;
         }
@@ -410,6 +440,7 @@ async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat) {
   let answer = '';
   let ctxHandled = false;
   let buffer = '';
+  let lastMetas = [];
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -426,6 +457,7 @@ async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat) {
         try {
           const obj = JSON.parse(jsonStr);
           const ctxs = obj.contexts || [];
+          lastMetas = obj.metadatas || [];
           const blocks = ctxs.map((c, i) => `<div class=\"ctx\"><strong>CTX ${i+1}</strong><pre>${escapeHtml(c)}</pre></div>`);
           contextsDiv.innerHTML = blocks.join('');
         } catch {}
@@ -443,6 +475,7 @@ async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat) {
       buffer = '';
     }
   }
+  renderCitations(answer, lastMetas);
 }
 
 async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat) {
@@ -465,6 +498,7 @@ async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat) {
   let answer = '';
   let ctxHandled = false;
   let buffer = '';
+  let lastMetas = [];
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -481,6 +515,7 @@ async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat) {
         try {
           const obj = JSON.parse(jsonStr);
           const ctxs = obj.contexts || [];
+          lastMetas = obj.metadatas || [];
           const blocks = ctxs.map((c, i) => `<div class=\"ctx\"><strong>CTX ${i+1}</strong><pre>${escapeHtml(c)}</pre></div>`);
           contextsDiv.innerHTML = blocks.join('');
         } catch {}
@@ -497,6 +532,7 @@ async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat) {
       buffer = '';
     }
   }
+  renderCitations(answer, lastMetas);
 }
 
 function escapeHtml(str) {

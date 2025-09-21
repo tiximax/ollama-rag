@@ -123,6 +123,58 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 
 ## Tiến trình gần nhất
 - 2025-09-21: Thêm Provider switch (OpenAI/Ollama), UI dropdown, API /api/provider; giữ Embeddings bằng Ollama. Test e2e (light) không hồi quy.
+
+## Kế hoạch R&D (Học thuật)
+Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.
+
+1) Pipeline truy vấn
+- Hybrid + RRF (Rank Fusion):
+  - Lấy top-N (vector) và top-M (BM25), hợp nhất bằng RRF: score = Σ 1/(k + rank_i).
+  - Giữ chế độ normalize-weight làm tùy chọn; mặc định RRF.
+- Rerank bắt buộc:
+  - Rerank top-K' (K' ≥ k) bằng BGE-ONNX; fallback cosine-embed (đã có). Mặc định bật.
+- Query rewrite/decompose:
+  - Rewrite 2–3 biến thể truy vấn (đa ngôn ngữ), hợp nhất bằng RRF trước rerank.
+  - Multi-hop (đã có): thêm tham số fanout_first_hop, budget_time_ms và max_hops để giới hạn chi phí.
+- Trích nguồn đa tài liệu + citations:
+  - Mỗi context kèm metadata {source, version, language, chunk}. Prompt yêu cầu chèn [n].
+  - Trả về citations: [{n, source, version, chunk}] cho UI render footnotes.
+
+2) Dữ liệu
+- Tài liệu dài: chunking 1000–1500 tokens, overlap 150–250; ưu tiên cắt theo tiêu đề/mục lục.
+- Phiên bản hóa: field version cho mỗi chunk; UI/Lọc theo version (hoặc dùng DB như version).
+- Đa ngôn ngữ: langid cho mỗi doc; BM25 tokenizer tùy ngôn ngữ; embedding đa ngôn ngữ (nomic-embed-text/bge-m3).
+
+3) Đo lường & đánh giá
+- Recall@k cho retrieval (pre/post-rerank) trên tập dev (q, gold_doc_ids).
+- Faithfulness: LLM-judge (local/OpenAI) đối chiếu answer với contexts; hoặc heuristic n-gram overlap (tham khảo).
+- Usefulness: UI feedback (thumbs/score/comment) + lưu vào /api/feedback.
+- Logging thực nghiệm JSONL: {ts, query, rewrites[], retrieve_sets, rrf_scores, rerank_scores, answer, citations, metrics?, provider, db, version}.
+
+4) UI/UX
+- Panel “Advanced R&D”: bật RRF, bắt buộc Reranker, Rewrite(n), Multi-hop(depth/fanout), budget time.
+- Bộ lọc version & language; hiển thị citations [n] → expand ngữ cảnh + metadata.
+- Nút Evaluate: chạy pilot set → hiện Recall@k, ước lượng faithfulness, bảng truy vấn.
+
+5) API
+- /api/query, /api/stream_query: thêm options rrf_enable, rrf_k, rewrite_enable, rewrite_n, hop_depth, hop_fanout, hop_budget_ms, version, language_filter, citations_format.
+- /api/eval/offline: nhận JSONL devset → trả Recall@k, latency, fail cases.
+- /api/feedback: lưu đánh giá người dùng (score/comment) kèm truy vấn/answer/citations.
+
+6) Kế hoạch triển khai (ưu tiên)
+- B1: Thêm RRF vào retrieve_hybrid (mặc định bật). e2e: contexts ổn định + citations stub.
+- B5: Citations [n] + map metadata → UI footnotes. e2e: kiểm tra [1][2] xuất hiện và map đúng.
+- B3: Query rewrite (n=2) + RRF hợp nhất. e2e: đa dạng hóa contexts (không đánh giá nội dung).
+- B4: Multi-hop nâng cao: budget + fanout_first_hop. e2e: multi-hop nhẹ pass.
+- B6: Phiên bản hóa + lọc ngôn ngữ. e2e: 2 phiên bản/DB.
+- B7: Eval offline (Recall@k; optional faithfulness bằng provider). Smoke-only (tránh tốn CPU trong CI).
+- B8: UI feedback + /api/feedback + log JSONL.
+
+7) ENV khuyến nghị (Windows/CPU)
+- RRF_ENABLE=1, RRF_K=60
+- REWRITE_N=2, HOP_DEPTH=2, HOP_FANOUT=2, HOP_BUDGET_MS=4000
+- LOG_EXPERIMENTS=1 (ghi logs/exp-*.jsonl)
+- Vẫn giữ “chế độ nhẹ” khi dev; @heavy chạy khi tăng tài nguyên hoặc dùng OpenAI provider.
 - 2025-09-21: Hoàn tất bản web app cơ bản chạy với Ollama, ingest TXT/PDF/DOCX, streaming, top-k.
 - 2025-09-21: Thêm bộ file triển khai Cloudflare Tunnel (Docker Compose + native) và hướng dẫn.
 - 2025-09-21: Server local hoạt động tại http://127.0.0.1:8000; sẵn sàng chạy tunnel nếu có CF_TUNNEL_TOKEN.
@@ -133,6 +185,12 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - 2025-09-21: Thêm Multi-hop Retrieval (engine+API+UI) + fallback single-hop; thêm endpoints /api/multihop_query và /api/stream_multihop_query.
 - 2025-09-21: Gắn nhãn @heavy cho Multi-hop & Reranker; thêm script npm run test:e2e:light (bỏ qua @heavy). Hướng dẫn “chế độ nhẹ” bằng biến môi trường (LLM_MODEL=tinyllama, OLLAMA_NUM_THREAD=2, ...).
 - 2025-09-21: Thêm Chat Sessions (per-DB), CRUD API, auto-save Q/A trong query/stream; UI quản lý. Test e2e (light) PASS 5/5.
+- 2025-09-21: Hoàn thiện RRF Fusion trong hybrid retrieval (B1), cấu hình RRF_ENABLE/RRF_K, expose tham số qua API. E2E (light) PASS.
+- 2025-09-21: B5 — Citations [n] trong prompt + UI render footnotes từ metadata; sửa lỗi cú pháp JS (xóa token thừa, loại else trùng) → e2e light PASS 7/7.
+- 2025-09-21: Bổ sung khối citations vào index.html và thêm e2e test (mock /api/query) kiểm tra UI citations; sửa thiếu gọi renderCitations ở nhánh non-stream /api/query → e2e light PASS 8/8.
+- 2025-09-21: Tinh chỉnh prompt backend (build_prompt) yêu cầu LLM chèn citations [n] khớp với [CTX n]; chạy lại e2e (light) PASS 8/8.
+- 2025-09-21: Giảm nhiễu log/telemetry Chroma trong test: tắt anonymized_telemetry (Settings), hạ mức logger chromadb/* xuống CRITICAL; e2e (light) PASS 8/8, log sạch hơn.
+- 2025-09-21: Thêm smoke test Cloudflare Tunnel (native + Docker), bổ sung scripts npm và cập nhật deploy/README.md.
 
 ## Ghi chú
 - Khi thêm tính năng mới, theo rule: chạy test automation (MCP Playwright) và sửa cho đến khi pass.

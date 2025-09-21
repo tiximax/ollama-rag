@@ -3,12 +3,14 @@ import uuid
 import re
 import shutil
 import json
+import logging
 from typing import List, Dict, Any, Sequence, Optional, Tuple
 
 from dotenv import load_dotenv
 
 from chromadb import PersistentClient
 from chromadb.api.types import Documents, Embeddings, IDs, Metadatas
+from chromadb.config import Settings
 
 from .ollama_client import OllamaClient
 from .openai_client import OpenAIClient  # type: ignore
@@ -20,6 +22,12 @@ except Exception:  # pragma: no cover
     BM25Okapi = None  # fallback if package not installed
 
 load_dotenv()
+# Giảm nhiễu log/telemetry từ chromadb trong test/CI
+for _name in ("chromadb", "chromadb.telemetry", "chromadb.telemetry.posthog"):
+    try:
+        logging.getLogger(_name).setLevel(logging.CRITICAL)
+    except Exception:
+        pass
 
 DEFAULT_PERSIST = os.getenv("PERSIST_DIR")
 PERSIST_ROOT = os.getenv("PERSIST_ROOT", "data/kb")
@@ -118,7 +126,11 @@ class RagEngine:
 
     def _init_client(self) -> None:
         os.makedirs(self.persist_dir, exist_ok=True)
-        self.client = PersistentClient(path=self.persist_dir)
+        try:
+            self.client = PersistentClient(path=self.persist_dir, settings=Settings(anonymized_telemetry=False))
+        except Exception:
+            # Fallback nếu phiên bản chromadb không hỗ trợ Settings
+            self.client = PersistentClient(path=self.persist_dir)
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
             embedding_function=OllamaEmbeddingFunction(self.ollama),
@@ -406,15 +418,18 @@ class RagEngine:
     # ===== Prompt & Answer =====
     def build_prompt(self, question: str, context_docs: List[str]) -> str:
         context_block = "\n\n".join([f"[CTX {i+1}]\n{c}" for i, c in enumerate(context_docs)])
+        # Hướng dẫn rõ ràng về citations [n] khớp với [CTX n]
         system = (
-            "Bạn là trợ lý AI tiếng Việt, trả lời ngắn gọn, trích dẫn nguồn nếu có. "
-            "Chỉ trả lời dựa trên ngữ cảnh được cung cấp. Nếu không đủ thông tin, hãy nói bạn không chắc."
+            "Bạn là trợ lý AI tiếng Việt, trả lời ngắn gọn, chính xác và chỉ dựa trên phần 'Ngữ cảnh' được cung cấp. "
+            "Khi sử dụng thông tin từ một CTX, hãy chèn citation dạng [n] với n là số thứ tự CTX tương ứng (ví dụ [1], [2]). "
+            "Có thể chèn nhiều [n] nếu nhiều nguồn liên quan. Không tạo citation nếu không có căn cứ trong ngữ cảnh. "
+            "Nếu không đủ thông tin để trả lời, hãy nói bạn không chắc thay vì suy đoán."
         )
         prompt = (
             f"{system}\n\n"
             f"Ngữ cảnh:\n{context_block}\n\n"
             f"Câu hỏi: {question}\n\n"
-            f"Trả lời (tiếng Việt):"
+            f"Trả lời (tiếng Việt), nhớ chèn [n] khi trích dẫn CTX phù hợp:"
         )
         return prompt
 
