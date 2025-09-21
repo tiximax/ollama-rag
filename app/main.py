@@ -49,6 +49,7 @@ class QueryRequest(BaseModel):
     bm25_weight: float = 0.5
     rerank_enable: bool = False
     rerank_top_n: int = 10
+    provider: Optional[str] = None
     chat_id: Optional[str] = None
     save_chat: bool = True
     db: str | None = None
@@ -63,6 +64,7 @@ class MultiHopQueryRequest(BaseModel):
     rerank_top_n: int = 10
     depth: int = 2
     fanout: int = 2
+    provider: Optional[str] = None
     chat_id: Optional[str] = None
     save_chat: bool = True
     db: str | None = None
@@ -80,6 +82,7 @@ def api_query(req: QueryRequest):
             bm25_weight=req.bm25_weight,
             rerank_enable=req.rerank_enable,
             rerank_top_n=req.rerank_top_n,
+            provider=req.provider,
         )
         # Lưu chat nếu cần
         if req.save_chat and req.chat_id:
@@ -121,7 +124,7 @@ def api_stream_query(req: QueryRequest):
             prompt = engine.build_prompt(req.query, ctx_docs)
             answer_buf = []
             try:
-                for chunk in engine.ollama.generate_stream(prompt):
+                for chunk in engine.generate_stream(prompt, provider=req.provider):
                     answer_buf.append(chunk)
                     yield chunk
             except Exception:
@@ -206,7 +209,7 @@ def api_stream_multihop_query(req: MultiHopQueryRequest):
             prompt = engine.build_prompt(req.query, ctx_docs)
             answer_buf = []
             try:
-                for chunk in engine.ollama.generate_stream(prompt):
+                for chunk in engine.generate_stream(prompt, provider=req.provider):
                     answer_buf.append(chunk)
                     yield chunk
             except Exception:
@@ -322,6 +325,30 @@ def api_chats_export(chat_id: str, format: str = "json", db: Optional[str] = Non
         if data is None:
             raise HTTPException(status_code=404, detail="Chat not found")
         return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Provider APIs =====
+class ProviderName(BaseModel):
+    name: str
+
+@app.get("/api/provider")
+def api_get_provider():
+    try:
+        return {"provider": engine.default_provider}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/provider")
+def api_set_provider(req: ProviderName):
+    try:
+        name = (req.name or "ollama").lower()
+        if name not in ("ollama", "openai"):
+            raise HTTPException(status_code=400, detail="Invalid provider")
+        engine.default_provider = name
+        return {"provider": engine.default_provider}
     except HTTPException:
         raise
     except Exception as e:

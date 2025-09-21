@@ -71,13 +71,19 @@
           Fanout:
           <input id="hop-fanout" type="number" min="1" max="3" value="2" />
         </label>
+        <label class="opt">Provider:
+          <select id="provider-select">
+            <option value="ollama" selected>Ollama</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </label>
         <label class="opt"><input id="ck-stream" type="checkbox" /> Streaming</label>
         <button id="btn-ask">Hỏi</button>
       </div>
       <div id="result" class="result"></div>
       <div id="contexts" class="contexts"></div>
       <footer>
-        <small>Model: <code id="model-name">llama3.1:8b</code> | Embed: <code id="embed-name">nomic-embed-text</code></small>
+        <small>Provider: <code id="provider-name">ollama</code> | Model: <code id="model-name">llama3.1:8b</code> | Embed: <code id="embed-name">nomic-embed-text</code></small>
       </footer>
     </div>
     <script src="/static/app.js"></script>

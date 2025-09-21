@@ -11,6 +11,7 @@ from chromadb import PersistentClient
 from chromadb.api.types import Documents, Embeddings, IDs, Metadatas
 
 from .ollama_client import OllamaClient
+from .openai_client import OpenAIClient  # type: ignore
 from .reranker import BgeOnnxReranker, SimpleEmbedReranker
 
 try:
@@ -92,6 +93,8 @@ class RagEngine:
         self.collection_name = collection_name
 
         self.ollama = OllamaClient()
+        self._openai: Optional[OpenAIClient] = None
+        self.default_provider = os.getenv("PROVIDER", "ollama").lower()
         # Initialize storage and client
         self._init_client()
 
@@ -395,7 +398,26 @@ class RagEngine:
         assert self._embed_rr is not None
         return self._embed_rr.rerank(question, docs, metas, top_k)
 
-    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10) -> Dict[str, Any]:
+    def _get_llm(self, provider: Optional[str] = None):
+        name = (provider or self.default_provider or "ollama").lower()
+        if name == "openai":
+            if self._openai is None:
+                try:
+                    self._openai = OpenAIClient()
+                except Exception:
+                    self._openai = None
+            return self._openai or self.ollama
+        return self.ollama
+
+    def generate_text(self, prompt: str, provider: Optional[str] = None) -> str:
+        llm = self._get_llm(provider)
+        return llm.generate(prompt)
+
+    def generate_stream(self, prompt: str, provider: Optional[str] = None):
+        llm = self._get_llm(provider)
+        return llm.generate_stream(prompt)
+
+    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10, provider: Optional[str] = None) -> Dict[str, Any]:
         method = (method or "vector").lower()
         base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
         if method == "bm25":
@@ -412,7 +434,7 @@ class RagEngine:
             docs = docs[:top_k]
             metas = metas[:top_k]
         prompt = self.build_prompt(question, docs)
-        reply = self.ollama.generate(prompt)
+        reply = self.generate_text(prompt, provider=provider)
         return {
             "answer": reply,
             "contexts": docs,
@@ -520,7 +542,7 @@ class RagEngine:
             sel_docs = agg_docs[:top_k]
             sel_metas = agg_metas[:top_k]
         prompt = self.build_prompt(question, sel_docs)
-        reply = "" if skip_answer else self.ollama.generate(prompt)
+        reply = "" if skip_answer else self.generate_text(prompt, provider=None)
         return {
             "answer": reply,
             "contexts": sel_docs,

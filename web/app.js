@@ -26,11 +26,40 @@ const chatDeleteAllBtn = document.getElementById('btn-chat-delete-all');
 const chatSearchInput = document.getElementById('chat-search');
 const chatSearchBtn = document.getElementById('btn-chat-search');
 const saveChatCk = document.getElementById('ck-save-chat');
+const providerSel = document.getElementById('provider-select');
+const providerName = document.getElementById('provider-name');
 const multihopCk = document.getElementById('ck-multihop');
 const multihopDepthWrap = document.getElementById('multihop-depth-wrap');
 const multihopFanoutWrap = document.getElementById('multihop-fanout-wrap');
 const hopDepth = document.getElementById('hop-depth');
 const hopFanout = document.getElementById('hop-fanout');
+
+async function loadProvider() {
+  try {
+    const resp = await fetch('/api/provider');
+    const data = await resp.json();
+    if (resp.ok && data.provider) {
+      if (providerSel) providerSel.value = data.provider;
+      if (providerName) providerName.textContent = data.provider;
+    }
+  } catch {}
+}
+
+async function setProvider(name) {
+  try {
+    const resp = await fetch('/api/provider', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      if (providerName) providerName.textContent = data.provider || name;
+    }
+  } catch (e) {
+    alert('Lỗi đổi provider: ' + e);
+  }
+}
 
 async function loadDbs() {
   try {
@@ -287,6 +316,7 @@ async function ask() {
   try {
     const chat_id = chatSelect.value || null;
     const save_chat = !!saveChatCk.checked;
+    const provider = providerSel ? providerSel.value : undefined;
     if (streaming) {
       if (multihopCk.checked) {
         await askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat);
@@ -298,7 +328,7 @@ async function ask() {
         const resp = await fetch('/api/multihop_query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), chat_id, save_chat, db: dbSelect.value || null })
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), provider, chat_id, save_chat, db: dbSelect.value || null })
         });
         const data = await resp.json();
         if (resp.ok) {
@@ -315,7 +345,7 @@ async function ask() {
         const resp = await fetch('/api/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, chat_id, save_chat, db: dbSelect.value || null })
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null })
         });
         const data = await resp.json();
         if (resp.ok) {
@@ -338,10 +368,11 @@ async function ask() {
 async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat) {
   const rerank_enable = !!rerankCk.checked;
   const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
+  const provider = providerSel ? providerSel.value : undefined;
   const resp = await fetch('/api/stream_query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, chat_id, save_chat, db: dbSelect.value || null })
+    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null })
   });
   if (!resp.ok || !resp.body) {
     resultDiv.textContent = `Streaming thất bại: ${resp.status}`;
@@ -392,10 +423,11 @@ async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat) {
   const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
   const depth = parseInt(hopDepth.value || '2', 10);
   const fanout = parseInt(hopFanout.value || '2', 10);
+  const provider = providerSel ? providerSel.value : undefined;
   const resp = await fetch('/api/stream_multihop_query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth, fanout, chat_id, save_chat, db: dbSelect.value || null })
+    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth, fanout, provider, chat_id, save_chat, db: dbSelect.value || null })
   });
   if (!resp.ok || !resp.body) {
     resultDiv.textContent = `Streaming thất bại: ${resp.status}`;
@@ -467,7 +499,7 @@ chatExportMdBtn.addEventListener('click', () => exportChat('md'));
 chatSearchBtn.addEventListener('click', searchChats);
 
 // init
-loadDbs().then(loadChats);
+loadProvider().then(() => loadDbs().then(loadChats));
 
 methodSel.addEventListener('change', () => {
   const m = methodSel.value;
@@ -488,3 +520,9 @@ multihopCk.addEventListener('change', () => {
   multihopDepthWrap.style.display = on ? '' : 'none';
   multihopFanoutWrap.style.display = on ? '' : 'none';
 });
+
+if (providerSel) {
+  providerSel.addEventListener('change', async () => {
+    await setProvider(providerSel.value);
+  });
+}
