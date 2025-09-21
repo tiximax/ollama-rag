@@ -16,7 +16,11 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - Cấu hình URL/Host/Port, Start/Stop server trong app, tự động reconnect
   - Lưu cấu hình tại %USERPROFILE%\.ollama_rag_desktop.json
 - Ingest: TXT, PDF (pypdf), DOCX (python-docx) – thêm file vào data/docs rồi gọi /api/ingest
-- Tính năng UI: nhập câu hỏi, đặt số CTX k, bật Streaming; hiển thị các CTX
+- Retrieval: Vector | BM25 | Hybrid (trọng số BM25)
+- Reranker: BGE v2 m3 (ONNX) hoặc fallback cosine-embedding
+- Multi-DB: tách DB theo thư mục data/kb/{db_name}/ và chuyển DB từ UI
+- Multi-hop: decompose → retrieve → synthesize (API + streaming), có fallback single-hop khi không có context
+- Tính năng UI: nhập câu hỏi, đặt số CTX k, bật Streaming; hiển thị các CTX; chọn phương pháp, reranker, multi-hop, DB
 - Script: scripts/ingest.py, scripts/run_server.ps1, scripts/pull_models.ps1
 - Deploy: Cloudflare Tunnel (deploy/README.md)
   - Docker Compose: deploy/docker/Dockerfile, docker-compose.yml, compose-up.ps1, compose-down.ps1
@@ -37,6 +41,7 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 3) Thêm Reranker BGE v2 (INT8) vào pipeline
 4) (Tuỳ chọn) Multi-DB cơ bản: tạo/xóa/list DB, chọn DB từ UI
 5) Chuẩn bị Desktop shell PyQt6 nhúng UI (khung cơ bản)
+6) Tối ưu hiệu năng local và thêm “chế độ nhẹ” cho e2e
 
 ## Tasks
 - [x] Khởi tạo FastAPI + UI web + Chroma + Ollama client
@@ -48,17 +53,33 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - [x] Tích hợp Reranker BGE v2 (INT8) (ưu tiên ONNX; fallback cosine embedding)
 - [x] Multi-DB cơ bản (API + UI)
 - [x] Desktop shell PyQt6 (khung, nhúng UI, cấu hình server, Start/Stop)
+- [x] Multi-hop Retrieval (engine + API + UI) + fallback single-hop
+- [x] Tối ưu hiệu năng local + thêm test:e2e:light (bỏ qua @heavy)
 
 ## Hướng dẫn sử dụng nhanh
 - Kéo models:
-  - ollama pull llama3.1:8b
+  - ollama pull llama3.1:8b (hoặc tinyllama cho chế độ nhẹ)
   - ollama pull nomic-embed-text
 - Chạy server (PowerShell):
-  - PowerShell -ExecutionPolicy Bypass -File .\scripts\run_server.ps1
+  - PowerShell -ExecutionPolicy Bypass -File .\\scripts\\run_server.ps1
   - Mở http://127.0.0.1:8000
 - Ingest dữ liệu:
   - Thả file .txt/.pdf/.docx vào data/docs, bấm “Index tài liệu mẫu” hoặc:
-  - python .\scripts\ingest.py
+  - python .\\scripts\\ingest.py
+
+### Chạy Playwright e2e (chế độ nhẹ khuyến nghị khi dev)
+- Thiết lập biến môi trường trước khi chạy test (pwsh/Windows):
+  - $env:LLM_MODEL = "tinyllama"
+  - $env:OLLAMA_NUM_THREAD = "2"
+  - $env:OLLAMA_NUM_CTX = "1024"
+  - $env:OLLAMA_NUM_GPU = "0"
+  - $env:ORT_INTRA_OP_THREADS = "1"
+  - $env:ORT_INTER_OP_THREADS = "1"
+  - $env:UVICORN_RELOAD = "0"
+- Chạy test nhẹ (bỏ qua @heavy):
+  - npm run test:e2e:light
+- Chạy full (gồm Multi-hop, Reranker):
+  - npm run test:e2e
 
 ## Triển khai Cloudflare Tunnel
 - Docker Compose: dùng deploy/docker/docker-compose.yml (cần đặt biến CF_TUNNEL_TOKEN)
@@ -75,8 +96,10 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - 2025-09-21: Server local hoạt động tại http://127.0.0.1:8000; sẵn sàng chạy tunnel nếu có CF_TUNNEL_TOKEN.
 - 2025-09-21: Thiết lập khung test e2e Playwright (globalSetup khởi động Ollama; webServer khởi động FastAPI). Chạy test thành công (5 cases pass, gồm Hybrid + Reranker).
 - 2025-09-21: Thêm Desktop shell PyQt6 khung cơ bản (desktop/main.py) + script chạy (scripts/run_desktop.ps1); Desktop shell tự khởi động server nếu chưa chạy và nhúng UI web.
-- 2025-09-21: Nâng cấp Desktop shell: hộp thoại cấu hình (URL/Host/Port), Start/Stop server trong app, tự động reconnect; cấu hình lưu ở %USERPROFILE%\.ollama_rag_desktop.json.
+- 2025-09-21: Nâng cấp Desktop shell: hộp thoại cấu hình (URL/Host/Port), Start/Stop server trong app, tự động reconnect; cấu hình lưu ở %USERPROFILE%\\.ollama_rag_desktop.json.
 - 2025-09-21: Ổn định gọi Ollama: thêm retry + backoff và timeout cho embeddings/generate (app/ollama_client.py). Biến môi trường: OLLAMA_CONNECT_TIMEOUT, OLLAMA_READ_TIMEOUT, OLLAMA_MAX_RETRIES, OLLAMA_RETRY_BACKOFF. Toàn bộ e2e tests PASS (6/6).
+- 2025-09-21: Thêm Multi-hop Retrieval (engine+API+UI) + fallback single-hop; thêm endpoints /api/multihop_query và /api/stream_multihop_query.
+- 2025-09-21: Gắn nhãn @heavy cho Multi-hop & Reranker; thêm script npm run test:e2e:light (bỏ qua @heavy). Hướng dẫn “chế độ nhẹ” bằng biến môi trường (LLM_MODEL=tinyllama, OLLAMA_NUM_THREAD=2, ...).
 
 ## Ghi chú
 - Khi thêm tính năng mới, theo rule: chạy test automation (MCP Playwright) và sửa cho đến khi pass.
