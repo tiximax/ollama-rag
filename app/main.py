@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -249,6 +249,16 @@ def api_chats_create(req: ChatCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# Define search BEFORE dynamic {chat_id} routes to avoid conflicts
+@app.get("/api/chats/search")
+def api_chats_search(q: str, db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        return {"db": engine.db_name, "results": chat_store.search(engine.db_name, q)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/chats/{chat_id}")
 def api_chats_get(chat_id: str, db: Optional[str] = None):
     try:
@@ -282,6 +292,38 @@ def api_chats_delete(chat_id: str, db: Optional[str] = None):
             engine.use_db(db)
         chat_store.delete(engine.db_name, chat_id)
         return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/chats")
+def api_chats_delete_all(db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        cnt = chat_store.delete_all(engine.db_name)
+        return {"status": "ok", "deleted": cnt}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chats/{chat_id}/export")
+def api_chats_export(chat_id: str, format: str = "json", db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        fmt = (format or "json").lower()
+        if fmt == "md" or fmt == "markdown":
+            md = chat_store.export_markdown(engine.db_name, chat_id)
+            if md is None:
+                raise HTTPException(status_code=404, detail="Chat not found")
+            return Response(content=md, media_type="text/markdown")
+        # default json
+        data = chat_store.export_json(engine.db_name, chat_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        return data
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

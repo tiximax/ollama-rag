@@ -92,6 +92,21 @@ class ChatStore:
         except Exception:
             pass
 
+    def delete_all(self, db_name: str) -> int:
+        base = self._db_chat_dir(db_name)
+        cnt = 0
+        try:
+            for fname in os.listdir(base):
+                if fname.endswith('.json'):
+                    try:
+                        os.remove(os.path.join(base, fname))
+                        cnt += 1
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return cnt
+
     def append_message(self, db_name: str, chat_id: str, role: str, content: str, meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         data = self.get(db_name, chat_id)
         if data is None:
@@ -121,3 +136,69 @@ class ChatStore:
         with open(p, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         return data
+
+    # ==== Export ====
+    def export_json(self, db_name: str, chat_id: str) -> Optional[Dict[str, Any]]:
+        return self.get(db_name, chat_id)
+
+    def to_markdown(self, data: Dict[str, Any]) -> str:
+        lines = []
+        title = data.get('name') or data.get('id') or 'Chat'
+        lines.append(f"# Chat: {title}")
+        lines.append("")
+        lines.append(f"Created: {data.get('created_at','')}")
+        lines.append(f"Updated: {data.get('updated_at','')}")
+        lines.append("")
+        for m in data.get('messages', []):
+            role = m.get('role', 'user')
+            ts = m.get('ts', '')
+            lines.append(f"## {role} — {ts}")
+            lines.append("")
+            lines.append(m.get('content', ''))
+            lines.append("")
+        return "\n".join(lines)
+
+    def export_markdown(self, db_name: str, chat_id: str) -> Optional[str]:
+        data = self.get(db_name, chat_id)
+        if data is None:
+            return None
+        return self.to_markdown(data)
+
+    # ==== Search ====
+    def search(self, db_name: str, query: str, limit_chats: int = 10, limit_matches: int = 5) -> List[Dict[str, Any]]:
+        q = (query or '').strip().lower()
+        if not q:
+            return []
+        results: List[Dict[str, Any]] = []
+        for summary in self.list(db_name):
+            if len(results) >= limit_chats:
+                break
+            data = self.get(db_name, summary['id'])
+            if not data:
+                continue
+            matches = []
+            for idx, m in enumerate(data.get('messages', [])):
+                text = str(m.get('content', ''))
+                if q in text.lower():
+                    # tạo snippet
+                    pos = text.lower().find(q)
+                    start = max(0, pos - 40)
+                    end = min(len(text), pos + 40)
+                    snippet = text[start:end].replace('\n', ' ')
+                    matches.append({
+                        'index': idx,
+                        'role': m.get('role', ''),
+                        'snippet': snippet
+                    })
+                if len(matches) >= limit_matches:
+                    break
+            if matches:
+                results.append({
+                    'chat': {
+                        'id': data.get('id'),
+                        'name': data.get('name'),
+                        'updated_at': data.get('updated_at')
+                    },
+                    'matches': matches
+                })
+        return results

@@ -20,6 +20,11 @@ const chatSelect = document.getElementById('chat-select');
 const chatNewBtn = document.getElementById('btn-chat-new');
 const chatRenameBtn = document.getElementById('btn-chat-rename');
 const chatDeleteBtn = document.getElementById('btn-chat-delete');
+const chatExportJsonBtn = document.getElementById('btn-chat-export-json');
+const chatExportMdBtn = document.getElementById('btn-chat-export-md');
+const chatDeleteAllBtn = document.getElementById('btn-chat-delete-all');
+const chatSearchInput = document.getElementById('chat-search');
+const chatSearchBtn = document.getElementById('btn-chat-search');
 const saveChatCk = document.getElementById('ck-save-chat');
 const multihopCk = document.getElementById('ck-multihop');
 const multihopDepthWrap = document.getElementById('multihop-depth-wrap');
@@ -176,6 +181,72 @@ async function deleteChat() {
     await loadChats();
   } catch (e) {
     alert('Lỗi xóa chat: ' + e);
+  }
+}
+
+async function deleteAllChats() {
+  if (!confirm('Xóa toàn bộ chat của DB hiện tại?')) return;
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    const resp = await fetch(`/api/chats?${params.toString()}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không xóa được');
+    await loadChats();
+    alert(`Đã xóa ${data.deleted} chats.`);
+  } catch (e) {
+    alert('Lỗi xóa tất cả: ' + e);
+  }
+}
+
+function downloadFile(name, content, mime) {
+  const blob = new Blob([content], { type: mime || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportChat(format) {
+  const id = chatSelect.value;
+  if (!id) { alert('Chưa chọn chat'); return; }
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    params.set('format', format);
+    const resp = await fetch(`/api/chats/${encodeURIComponent(id)}/export?${params.toString()}`);
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || 'Export thất bại');
+    }
+    if (format === 'json') {
+      const data = await resp.json();
+      downloadFile(`chat-${id}.json`, JSON.stringify(data, null, 2), 'application/json');
+    } else {
+      const text = await resp.text();
+      downloadFile(`chat-${id}.md`, text, 'text/markdown');
+    }
+  } catch (e) {
+    alert('Lỗi export: ' + e);
+  }
+}
+
+async function searchChats() {
+  const q = (chatSearchInput.value || '').trim();
+  if (!q) { alert('Nhập từ khóa'); return; }
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    params.set('q', q);
+    const resp = await fetch(`/api/chats/search?${params.toString()}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Search lỗi');
+    const results = data.results || [];
+    resultDiv.textContent = `Search '${q}': ${results.length} chats có kết quả.`;
+  } catch (e) {
+    alert('Lỗi search: ' + e);
   }
 }
 
@@ -390,6 +461,10 @@ dbDeleteBtn.addEventListener('click', async () => { await deleteDb(); await load
 chatNewBtn.addEventListener('click', createChat);
 chatRenameBtn.addEventListener('click', renameChat);
 chatDeleteBtn.addEventListener('click', deleteChat);
+chatDeleteAllBtn.addEventListener('click', deleteAllChats);
+chatExportJsonBtn.addEventListener('click', () => exportChat('json'));
+chatExportMdBtn.addEventListener('click', () => exportChat('md'));
+chatSearchBtn.addEventListener('click', searchChats);
 
 // init
 loadDbs().then(loadChats);
