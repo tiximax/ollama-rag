@@ -133,6 +133,10 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - API: thêm /api/eval/offline nhận dataset JSON (queries[], k, method, filters); tính recall@k dựa trên expected_sources/expected_substrings.
   - UI: panel "Offline Evaluation" với textarea nhập JSON và nút Run Eval, hiển thị Recall@k (hits/N).
   - Tests: thêm tests/e2e/eval_offline.spec.js (BM25 + versions) đảm bảo Recall@k=1.0 trên bộ mẫu en1/vi1.
+- 2025-09-23: B8 — Feedback:
+  - API: thêm /api/feedback (POST/GET/DELETE) lưu feedback theo DB ở data/kb/{db}/feedback/feedback.jsonl; payload gồm score (-1|0|1), comment, query/answer, provider/method/k, filters, sources.
+  - UI: thêm thanh feedback (👍/👎, comment, Gửi feedback) cạnh vùng hỏi.
+  - Tests: thêm tests/e2e/feedback.spec.js xác nhận gửi và đọc lại feedback (PASS).
 
 ## Kế hoạch R&D (Học thuật)
 Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.

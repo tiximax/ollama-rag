@@ -51,6 +51,10 @@ const filterVersSel = document.getElementById('filter-versions');
 const evalJson = document.getElementById('eval-json');
 const evalRunBtn = document.getElementById('btn-eval-run');
 const evalResultDiv = document.getElementById('eval-result');
+const fbUpBtn = document.getElementById('btn-fb-up');
+const fbDownBtn = document.getElementById('btn-fb-down');
+const fbSendBtn = document.getElementById('btn-fb-send');
+const fbComment = document.getElementById('fb-comment');
 
 async function loadProvider() {
   try {
@@ -283,6 +287,11 @@ async function deleteAllChats() {
   }
 }
 
+let gLastAnswer = '';
+let gLastMetas = [];
+let gLastQuery = '';
+let gFbScore = 0;
+
 async function runEval() {
   try {
     const raw = (evalJson && evalJson.value || '').trim();
@@ -354,10 +363,51 @@ async function exportChat(format) {
       downloadFile(`chat-${id}.json`, JSON.stringify(data, null, 2), 'application/json');
     } else {
       const text = await resp.text();
-      downloadFile(`chat-${id}.md`, text, 'text/markdown');
+downloadFile(`chat-${id}.md`, text, 'text/markdown');
     }
   } catch (e) {
     alert('Lỗi export: ' + e);
+  }
+}
+
+async function sendFeedback() {
+  try {
+    const score = gFbScore;
+    if (!score) { alert('Chọn 👍 hoặc 👎 trước khi gửi'); return; }
+    const provider = providerSel ? providerSel.value : undefined;
+    const method = methodSel ? methodSel.value : undefined;
+    const k = parseInt(topkInput.value || '5', 10);
+    const languages = getSelectedValues(filterLangsSel);
+    const versions = getSelectedValues(filterVersSel);
+    const sources = Array.isArray(gLastMetas) ? gLastMetas.map(m => (m && m.source) ? String(m.source) : '') : [];
+    const payload = {
+      db: dbSelect.value || null,
+      chat_id: chatSelect.value || null,
+      query: gLastQuery || null,
+      answer: gLastAnswer || null,
+      score,
+      comment: fbComment && fbComment.value || '',
+      provider,
+      method,
+      k,
+      languages: languages.length ? languages : null,
+      versions: versions.length ? versions : null,
+      sources,
+    };
+    const resp = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || resp.status);
+    }
+    if (fbComment) fbComment.value = '';
+    gFbScore = 0;
+    alert('Đã gửi feedback!');
+  } catch (e) {
+    alert('Lỗi gửi feedback: ' + e);
   }
 }
 
@@ -492,6 +542,7 @@ async function ask() {
     const provider = providerSel ? providerSel.value : undefined;
     const languages = getSelectedValues(filterLangsSel);
     const versions = getSelectedValues(filterVersSel);
+    gLastQuery = q;
     if (streaming) {
       if (multihopCk.checked) {
         await askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat, { languages, versions });
@@ -508,6 +559,7 @@ async function ask() {
         const data = await resp.json();
         if (resp.ok) {
           resultDiv.textContent = data.answer || '(Không có trả lời)';
+          gLastAnswer = data.answer || '';
           const ctxs = data.contexts || [];
           const metas = data.metadatas || [];
           if (ctxs.length) {
@@ -533,6 +585,7 @@ async function ask() {
             contextsDiv.innerHTML = blocks.join('');
           }
           const metas = data.metadatas || [];
+          gLastMetas = metas;
           renderCitations(data.answer || '', metas);
         } else {
           resultDiv.textContent = `Lỗi truy vấn: ${data.detail}`;
@@ -606,6 +659,8 @@ async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat, opt) 
       buffer = '';
     }
   }
+  gLastAnswer = answer;
+  gLastMetas = lastMetas || [];
   renderCitations(answer, lastMetas);
 }
 
@@ -668,6 +723,8 @@ async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat, opt
       buffer = '';
     }
   }
+  gLastAnswer = answer;
+  gLastMetas = lastMetas || [];
   renderCitations(answer, lastMetas);
 }
 
@@ -701,6 +758,9 @@ chatExportDbMdBtn.addEventListener('click', () => exportDb('md'));
 chatSearchBtn.addEventListener('click', searchChats);
 if (ingestPathsBtn) ingestPathsBtn.addEventListener('click', ingestByPaths);
 if (evalRunBtn) evalRunBtn.addEventListener('click', runEval);
+if (fbUpBtn) fbUpBtn.addEventListener('click', () => { gFbScore = 1; });
+if (fbDownBtn) fbDownBtn.addEventListener('click', () => { gFbScore = -1; });
+if (fbSendBtn) fbSendBtn.addEventListener('click', sendFeedback);
 
 // init
 loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); }));

@@ -8,6 +8,7 @@ import json
 
 from .rag_engine import RagEngine
 from .chat_store import ChatStore
+from .feedback_store import FeedbackStore
 
 app = FastAPI(title="Ollama RAG App")
 
@@ -16,6 +17,7 @@ app = FastAPI(title="Ollama RAG App")
 # Nếu không, mặc định PERSIST_ROOT=data/kb và DB_NAME=default
 engine = RagEngine(persist_dir=os.path.join("data", "chroma"))
 chat_store = ChatStore(engine.persist_root)
+feedback_store = FeedbackStore(engine.persist_root)
 
 # Phục vụ web UI
 app.mount("/static", StaticFiles(directory="web"), name="static")
@@ -544,6 +546,53 @@ def api_set_provider(req: ProviderName):
         return {"provider": engine.default_provider}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Feedback APIs =====
+class FeedbackItem(BaseModel):
+    db: Optional[str] = None
+    chat_id: Optional[str] = None
+    query: Optional[str] = None
+    answer: Optional[str] = None
+    score: int  # -1 | 0 | 1
+    comment: Optional[str] = None
+    provider: Optional[str] = None
+    method: Optional[str] = None
+    k: Optional[int] = None
+    languages: Optional[List[str]] = None
+    versions: Optional[List[str]] = None
+    sources: Optional[List[str]] = None
+
+@app.post("/api/feedback")
+def api_feedback_add(item: FeedbackItem):
+    try:
+        if item.db:
+            engine.use_db(item.db)
+        data = item.model_dump()
+        data["db"] = engine.db_name
+        feedback_store.append(engine.db_name, data)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/feedback")
+def api_feedback_list(db: Optional[str] = None, limit: int = 50):
+    try:
+        if db:
+            engine.use_db(db)
+        items = feedback_store.list(engine.db_name, limit=limit)
+        return {"db": engine.db_name, "items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/feedback")
+def api_feedback_clear(db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        cnt = feedback_store.clear(engine.db_name)
+        return {"status": "ok", "deleted": cnt}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
