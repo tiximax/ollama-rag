@@ -34,6 +34,8 @@ const chatExportMdBtn = document.getElementById('btn-chat-export-md');
 const chatDeleteAllBtn = document.getElementById('btn-chat-delete-all');
 const chatExportDbJsonBtn = document.getElementById('btn-chat-export-db-json');
 const chatExportDbMdBtn = document.getElementById('btn-chat-export-db-md');
+const citationsChatBtn = document.getElementById('btn-citations-chat');
+const citationsDbBtn = document.getElementById('btn-citations-db');
 const chatSearchInput = document.getElementById('chat-search');
 const chatSearchBtn = document.getElementById('btn-chat-search');
 const saveChatCk = document.getElementById('ck-save-chat');
@@ -860,6 +862,32 @@ if (fbSendBtn) fbSendBtn.addEventListener('click', sendFeedback);
 if (logsEnableCk) logsEnableCk.addEventListener('change', async () => { await setLogsEnabled(logsEnableCk.checked); });
 if (logsExportBtn) logsExportBtn.addEventListener('click', exportLogs);
 if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', loadAnalytics);
+if (citationsChatBtn) citationsChatBtn.addEventListener('click', async () => {
+  const id = chatSelect.value;
+  if (!id) { alert('Chưa chọn chat'); return; }
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    params.set('format', 'json');
+    const resp = await fetch(`/api/citations/chat/${encodeURIComponent(id)}?${params.toString()}`);
+    if (!resp.ok) throw new Error('Export citations lỗi');
+    const text = await resp.text();
+    downloadFile(`citations-${id}.json`, text, 'application/json');
+  } catch (e) { alert('Lỗi export citations: ' + e); }
+});
+if (citationsDbBtn) citationsDbBtn.addEventListener('click', async () => {
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    params.set('format', 'json');
+    const resp = await fetch('/api/citations/db?' + params.toString());
+    if (!resp.ok) throw new Error('Export citations DB lỗi');
+    const buf = await resp.arrayBuffer();
+    const blob = new Blob([buf], { type: 'application/zip' });
+    const name = `citations-${dbSelect.value || 'default'}.zip`;
+    downloadBlob(name, blob);
+  } catch (e) { alert('Lỗi export citations DB: ' + e); }
+});
 
 // init
 loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); await loadLogsInfo(); await loadAnalytics(); }));

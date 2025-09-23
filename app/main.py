@@ -124,7 +124,13 @@ def api_query(req: QueryRequest):
         # Lưu chat nếu cần
         if req.save_chat and req.chat_id:
             try:
-                chat_store.append_pair(engine.db_name, req.chat_id, req.query, result.get("answer", ""), {"metas": result.get("metadatas", [])})
+                chat_store.append_pair(
+                    engine.db_name,
+                    req.chat_id,
+                    req.query,
+                    result.get("answer", ""),
+                    {"metas": result.get("metadatas", []), "contexts": result.get("contexts", [])},
+                )
             except Exception:
                 pass
         result["db"] = engine.db_name
@@ -274,7 +280,7 @@ def api_stream_query(req: QueryRequest):
                 # Lưu chat nếu cần (nếu chưa lưu sớm)
                 if req.save_chat and req.chat_id and not saved_early:
                     try:
-                        chat_store.append_pair(engine.db_name, req.chat_id, req.query, "".join(answer_buf), {"metas": metas})
+                        chat_store.append_pair(engine.db_name, req.chat_id, req.query, "".join(answer_buf), {"metas": metas, "contexts": ctx_docs})
                     except Exception:
                         pass
                 # Log
@@ -334,7 +340,7 @@ def api_multihop_query(req: MultiHopQueryRequest):
         )
         if req.save_chat and req.chat_id:
             try:
-                chat_store.append_pair(engine.db_name, req.chat_id, req.query, result.get("answer", ""), {"metas": result.get("metadatas", [])})
+                chat_store.append_pair(engine.db_name, req.chat_id, req.query, result.get("answer", ""), {"metas": result.get("metadatas", []), "contexts": result.get("contexts", [])})
             except Exception:
                 pass
         result["db"] = engine.db_name
@@ -429,7 +435,7 @@ def api_stream_multihop_query(req: MultiHopQueryRequest):
             finally:
                 if req.save_chat and req.chat_id:
                     try:
-                        chat_store.append_pair(engine.db_name, req.chat_id, req.query, "".join(answer_buf), {"metas": metas})
+                        chat_store.append_pair(engine.db_name, req.chat_id, req.query, "".join(answer_buf), {"metas": metas, "contexts": ctx_docs})
                     except Exception:
                         pass
                 # Log
@@ -739,6 +745,136 @@ def api_logs_clear(db: Optional[str] = None):
             engine.use_db(db)
         cnt = exp_logger.clear(engine.db_name)
         return {"status": "ok", "deleted_files": cnt}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Citations Export APIs =====
+@app.get("/api/citations/chat/{chat_id}")
+def api_citations_chat(chat_id: str, format: str = "json", db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        data = chat_store.get(engine.db_name, chat_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        # build citations from assistant messages
+        import re
+        citations = []
+        last_user = None
+        for m in data.get('messages', []):
+            role = m.get('role')
+            if role == 'user':
+                last_user = m.get('content')
+                continue
+            if role != 'assistant':
+                continue
+            ans = m.get('content') or ''
+            metas = (m.get('meta') or {}).get('metas') or []
+            ctxs = (m.get('meta') or {}).get('contexts') or []
+            seen = set()
+            for match in re.finditer(r"\[(\d+)\]", ans):
+                try:
+                    n = int(match.group(1))
+                except Exception:
+                    continue
+                if n in seen or n <= 0 or n > len(metas):
+                    continue
+                seen.add(n)
+                md = metas[n-1] or {}
+                citations.append({
+                    'n': n,
+                    'source': md.get('source'),
+                    'version': md.get('version'),
+                    'language': md.get('language'),
+                    'chunk': md.get('chunk'),
+                    'excerpt': (ctxs[n-1] if 0 <= (n-1) < len(ctxs) else None),
+                    'question': last_user,
+                    'ts': m.get('ts'),
+                })
+        fmt = (format or 'json').lower()
+        if fmt == 'csv':
+            import io, csv
+            buf = io.StringIO()
+            writer = csv.DictWriter(buf, fieldnames=['n','source','version','language','chunk','question','excerpt','ts'])
+            writer.writeheader()
+            for row in citations:
+                writer.writerow(row)
+            return Response(content=buf.getvalue(), media_type='text/csv', headers={'Content-Disposition': f'attachment; filename=citations-{chat_id}.csv'})
+        if fmt == 'md' or fmt == 'markdown':
+            lines = ['# Citations']
+            for c in citations:
+                lines.append(f"- [{c.get('n')}] {c.get('source')} v={c.get('version')} lang={c.get('language')} chunk={c.get('chunk')}")
+            md = "\n".join(lines)
+            return Response(content=md, media_type='text/markdown')
+        # default json
+        return citations
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/citations/db")
+def api_citations_db(format: str = 'json', db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        # build per-chat files and zip
+        import io, zipfile, json
+        mem = io.BytesIO()
+        with zipfile.ZipFile(mem, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for ch in chat_store.list(engine.db_name):
+                cid = ch.get('id')
+                if not cid:
+                    continue
+                content_resp = api_citations_chat(cid, format=format, db=engine.db_name)  # type: ignore[arg-type]
+                # content_resp có thể là Response (csv/md) hoặc list json
+                fname_base = ch.get('name') or cid
+                if format.lower() == 'csv':
+                    if hasattr(content_resp, 'body_iterator'):
+                        # Không thể dễ dàng đọc body từ Response streaming trong server context, nên dựng lại CSV tại đây
+                        # fallback: tạo CSV từ list JSON
+                        data = api_citations_chat(cid, format='json', db=engine.db_name)  # type: ignore[arg-type]
+                        rows = data if isinstance(data, list) else []
+                        import csv
+                        from io import StringIO
+                        s = StringIO()
+                        w = csv.DictWriter(s, fieldnames=['n','source','version','language','chunk','question','excerpt','ts'])
+                        w.writeheader()
+                        for r in rows:
+                            w.writerow(r)
+                        zf.writestr(f"{fname_base}-citations.csv", s.getvalue())
+                    else:
+                        # nếu trả JSON list
+                        rows = content_resp if isinstance(content_resp, list) else []
+                        import csv
+                        from io import StringIO
+                        s = StringIO()
+                        w = csv.DictWriter(s, fieldnames=['n','source','version','language','chunk','question','excerpt','ts'])
+                        w.writeheader()
+                        for r in rows:
+                            w.writerow(r)
+                        zf.writestr(f"{fname_base}-citations.csv", s.getvalue())
+                elif format.lower() in ('md','markdown'):
+                    if hasattr(content_resp, 'body_iterator'):
+                        # không xử lý body_iterator ở đây; tạo lại từ JSON
+                        rows = api_citations_chat(cid, format='json', db=engine.db_name)  # type: ignore[arg-type]
+                        lines = ['# Citations']
+                        for c in rows:
+                            lines.append(f"- [{c.get('n')}] {c.get('source')} v={c.get('version')} lang={c.get('language')} chunk={c.get('chunk')}")
+                        zf.writestr(f"{fname_base}-citations.md", "\n".join(lines))
+                    else:
+                        # list
+                        rows = content_resp if isinstance(content_resp, list) else []
+                        lines = ['# Citations']
+                        for c in rows:
+                            lines.append(f"- [{c.get('n')}] {c.get('source')} v={c.get('version')} lang={c.get('language')} chunk={c.get('chunk')}")
+                        zf.writestr(f"{fname_base}-citations.md", "\n".join(lines))
+                else:
+                    # json
+                    rows = content_resp if isinstance(content_resp, list) else []
+                    zf.writestr(f"{fname_base}-citations.json", json.dumps(rows, ensure_ascii=False, indent=2))
+        mem.seek(0)
+        return Response(content=mem.read(), media_type='application/zip', headers={'Content-Disposition': f'attachment; filename={engine.db_name}-citations.zip'})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

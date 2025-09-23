@@ -1,0 +1,31 @@
+{
+  "id": "b3b0c6f0-244a-4d5c-b696-3d4d572539af",
+  "name": "Citations Chat",
+  "created_at": "2025-09-23T14:11:59.995830Z",
+  "updated_at": "2025-09-23T14:12:00.038180Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Bitsness là gì?",
+      "meta": {},
+      "ts": "2025-09-23T14:12:00.038180Z"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "meta": {
+        "metas": [
+          {
+            "chunk": 0,
+            "source": "data/docs\\bitsness_sample.txt"
+          },
+          {
+            "chunk": 0,
+            "source": "data/docs\\bitsness_sample.txt"
+          }
+        ]
+      },
+      "ts": "2025-09-23T14:12:00.038180Z"
+    }
+  ]
+}
