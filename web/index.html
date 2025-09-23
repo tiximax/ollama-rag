@@ -60,6 +60,25 @@
         </div>
         <div id="eval-result" class="result" style="margin-top:6px;"></div>
       </div>
+      <div class="analytics" style="margin: 8px 0; padding: 8px; border: 1px solid #ddd;">
+        <h3>Analytics</h3>
+        <div style="margin-bottom:6px;">
+          <button id="btn-analytics-refresh">Refresh</button>
+        </div>
+        <div class="analytics-grid">
+          <div>Chats: <strong id="an-chats">-</strong></div>
+          <div>QA pairs: <strong id="an-qa">-</strong></div>
+          <div>Answered: <strong id="an-answered">-</strong></div>
+          <div>With contexts: <strong id="an-withctx">-</strong></div>
+          <div>Ans len avg: <strong id="an-ans-avg">-</strong></div>
+          <div>Ans len median: <strong id="an-ans-med">-</strong></div>
+        </div>
+        <div class="analytics-lists" style="margin-top:6px; display:flex; gap:12px; flex-wrap:wrap;">
+          <div><div><strong>Top sources</strong></div><ul id="an-top-sources"></ul></div>
+          <div><div><strong>Top versions</strong></div><ul id="an-top-versions"></ul></div>
+          <div><div><strong>Top languages</strong></div><ul id="an-top-langs"></ul></div>
+        </div>
+      </div>
       <div class="query">
         <input id="txt-query" type="text" placeholder="Nhập câu hỏi..." />
         <label class="opt">k:

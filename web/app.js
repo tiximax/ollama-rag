@@ -62,6 +62,16 @@ const fbSendBtn = document.getElementById('btn-fb-send');
 const fbComment = document.getElementById('fb-comment');
 const logsEnableCk = document.getElementById('ck-logs-enable');
 const logsExportBtn = document.getElementById('btn-logs-export');
+const analyticsRefreshBtn = document.getElementById('btn-analytics-refresh');
+const anChats = document.getElementById('an-chats');
+const anQa = document.getElementById('an-qa');
+const anAnswered = document.getElementById('an-answered');
+const anWithCtx = document.getElementById('an-withctx');
+const anAnsAvg = document.getElementById('an-ans-avg');
+const anAnsMed = document.getElementById('an-ans-med');
+const anTopSources = document.getElementById('an-top-sources');
+const anTopVersions = document.getElementById('an-top-versions');
+const anTopLangs = document.getElementById('an-top-langs');
 
 async function loadProvider() {
   try {
@@ -372,6 +382,36 @@ async function runEval() {
     evalResultDiv.textContent = `Recall@k: ${recall} (${hits}/${n})`;
   } catch (e) {
     evalResultDiv.textContent = 'Eval lỗi: ' + e;
+  }
+}
+
+async function loadAnalytics() {
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    const resp = await fetch('/api/analytics/db?' + params.toString());
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Analytics lỗi');
+    if (anChats) anChats.textContent = String(data.chats ?? '-');
+    if (anQa) anQa.textContent = String(data.qa_pairs ?? '-');
+    if (anAnswered) anAnswered.textContent = String(data.answered ?? '-');
+    if (anWithCtx) anWithCtx.textContent = String(data.with_contexts ?? '-');
+    if (anAnsAvg) anAnsAvg.textContent = String((data.answer_len_avg ?? 0).toFixed ? data.answer_len_avg.toFixed(2) : data.answer_len_avg);
+    if (anAnsMed) anAnsMed.textContent = data.answer_len_median == null ? '-' : String(data.answer_len_median);
+    const renderList = (el, arr) => {
+      if (!el) return;
+      el.innerHTML = '';
+      (arr || []).forEach(it => {
+        const li = document.createElement('li');
+        li.textContent = `${it.value} (${it.count})`;
+        el.appendChild(li);
+      });
+    };
+    renderList(anTopSources, data.top_sources || []);
+    renderList(anTopVersions, data.top_versions || []);
+    renderList(anTopLangs, data.top_languages || []);
+  } catch (e) {
+    if (anChats) anChats.textContent = '-';
   }
 }
 
@@ -798,6 +838,7 @@ dbSelect.addEventListener('change', async () => {
   await loadChats();
   await loadFilters();
   await loadLogsInfo();
+  await loadAnalytics();
 });
 
 dbCreateBtn.addEventListener('click', async () => { await createDb(); await loadChats(); });
@@ -818,9 +859,10 @@ if (fbDownBtn) fbDownBtn.addEventListener('click', () => { gFbScore = -1; });
 if (fbSendBtn) fbSendBtn.addEventListener('click', sendFeedback);
 if (logsEnableCk) logsEnableCk.addEventListener('change', async () => { await setLogsEnabled(logsEnableCk.checked); });
 if (logsExportBtn) logsExportBtn.addEventListener('click', exportLogs);
+if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', loadAnalytics);
 
 // init
-loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); await loadLogsInfo(); }));
+loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); await loadLogsInfo(); await loadAnalytics(); }));
 
 methodSel.addEventListener('change', () => {
   const m = methodSel.value;

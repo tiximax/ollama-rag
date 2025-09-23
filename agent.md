@@ -150,7 +150,8 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 - 2025-09-23: B10a — Session analytics:
   - API: /api/analytics/db (tổng hợp theo DB) và /api/analytics/chat/{chat_id} (tổng hợp theo chat): qa_pairs, answered, with_contexts, answer_len_avg/median, top_sources/versions/languages, first_ts/last_ts.
   - Thuật toán: đọc chats JSON theo DB, đếm cặp Q/A (assistant), trích metadata từ metas (nguồn, version, language), tính trung bình và median độ dài câu trả lời.
-  - Tests: thêm tests/e2e/analytics.spec.js (tạo DB, ingest, tạo chat, gửi stream queries để lưu sớm, gọi analytics DB). PASS.
+  - UI: thêm panel Analytics (Refresh, số liệu chính và Top lists).
+  - Tests: thêm tests/e2e/analytics.spec.js (API) và tests/e2e/analytics_ui.spec.js (UI). PASS.
 
 ## Kế hoạch R&D (Học thuật)
 Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.
