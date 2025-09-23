@@ -9,6 +9,7 @@ import json
 from .rag_engine import RagEngine
 from .chat_store import ChatStore
 from .feedback_store import FeedbackStore
+from .exp_logger import ExperimentLogger
 
 app = FastAPI(title="Ollama RAG App")
 
@@ -18,6 +19,7 @@ app = FastAPI(title="Ollama RAG App")
 engine = RagEngine(persist_dir=os.path.join("data", "chroma"))
 chat_store = ChatStore(engine.persist_root)
 feedback_store = FeedbackStore(engine.persist_root)
+exp_logger = ExperimentLogger(engine.persist_root)
 
 # Phục vụ web UI
 app.mount("/static", StaticFiles(directory="web"), name="static")
@@ -90,6 +92,8 @@ def api_query(req: QueryRequest):
     try:
         if req.db:
             engine.use_db(req.db)
+        import time as _t
+        t0 = int(_t.time() * 1000)
         result = engine.answer(
             req.query,
             top_k=req.k,
@@ -112,6 +116,33 @@ def api_query(req: QueryRequest):
             except Exception:
                 pass
         result["db"] = engine.db_name
+        # Log
+        try:
+            t1 = int(_t.time() * 1000)
+            exp_logger.log(engine.db_name, {
+                "ts": t1,
+                "latency_ms": t1 - t0,
+                "route": "/api/query",
+                "db": engine.db_name,
+                "provider": req.provider or engine.default_provider,
+                "method": req.method,
+                "k": req.k,
+                "bm25_weight": req.bm25_weight,
+                "rerank_enable": req.rerank_enable,
+                "rerank_top_n": req.rerank_top_n,
+                "rrf_enable": req.rrf_enable,
+                "rrf_k": req.rrf_k,
+                "rewrite_enable": req.rewrite_enable,
+                "rewrite_n": req.rewrite_n,
+                "languages": req.languages,
+                "versions": req.versions,
+                "query": req.query,
+                "answer_len": len(result.get("answer", "")),
+                "contexts_count": len(result.get("contexts", [])),
+                "contexts_sources": [ (m or {}).get("source", "") for m in result.get("metadatas", []) ],
+            })
+        except Exception:
+            pass
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -121,6 +152,8 @@ def api_query(req: QueryRequest):
 def api_stream_query(req: QueryRequest):
     try:
         def gen():
+            import time as _t
+            t0 = int(_t.time() * 1000)
             if req.db:
                 engine.use_db(req.db)
             # Lấy contexts theo method đã chọn, có thể áp dụng reranker trước khi stream
@@ -183,6 +216,32 @@ def api_stream_query(req: QueryRequest):
             # Gửi contexts trước dưới dạng JSON đánh dấu
             header = {"contexts": ctx_docs, "metadatas": metas, "db": engine.db_name}
             yield "[[CTXJSON]]" + json.dumps(header) + "\n"
+            # Log sớm ngay sau khi có contexts để export logs không phải đợi sinh câu trả lời
+            try:
+                exp_logger.log(engine.db_name, {
+                    "ts": int(__import__('time').time() * 1000),
+                    "latency_ms": 0,
+                    "route": "/api/stream_query",
+                    "db": engine.db_name,
+                    "provider": req.provider or engine.default_provider,
+                    "method": req.method,
+                    "k": req.k,
+                    "bm25_weight": req.bm25_weight,
+                    "rerank_enable": req.rerank_enable,
+                    "rerank_top_n": req.rerank_top_n,
+                    "rrf_enable": req.rrf_enable,
+                    "rrf_k": req.rrf_k,
+                    "rewrite_enable": req.rewrite_enable,
+                    "rewrite_n": req.rewrite_n,
+                    "languages": req.languages,
+                    "versions": req.versions,
+                    "query": req.query,
+                    "answer_len": 0,
+                    "contexts_count": len(ctx_docs or []),
+                    "contexts_sources": [ (m or {}).get("source", "") for m in metas or [] ],
+                })
+            except Exception:
+                pass
             prompt = engine.build_prompt(req.query, ctx_docs)
             answer_buf = []
             try:
@@ -198,6 +257,33 @@ def api_stream_query(req: QueryRequest):
                         chat_store.append_pair(engine.db_name, req.chat_id, req.query, "".join(answer_buf), {"metas": metas})
                     except Exception:
                         pass
+                # Log
+                try:
+                    t1 = int(_t.time() * 1000)
+                    exp_logger.log(engine.db_name, {
+                        "ts": t1,
+                        "latency_ms": t1 - t0,
+                        "route": "/api/stream_query",
+                        "db": engine.db_name,
+                        "provider": req.provider or engine.default_provider,
+                        "method": req.method,
+                        "k": req.k,
+                        "bm25_weight": req.bm25_weight,
+                        "rerank_enable": req.rerank_enable,
+                        "rerank_top_n": req.rerank_top_n,
+                        "rrf_enable": req.rrf_enable,
+                        "rrf_k": req.rrf_k,
+                        "rewrite_enable": req.rewrite_enable,
+                        "rewrite_n": req.rewrite_n,
+                        "languages": req.languages,
+                        "versions": req.versions,
+                        "query": req.query,
+                        "answer_len": len("".join(answer_buf)),
+                        "contexts_count": len(ctx_docs or []),
+                        "contexts_sources": [ (m or {}).get("source", "") for m in metas or [] ],
+                    })
+                except Exception:
+                    pass
         return StreamingResponse(gen(), media_type="text/plain")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -207,6 +293,8 @@ def api_multihop_query(req: MultiHopQueryRequest):
     try:
         if req.db:
             engine.use_db(req.db)
+        import time as _t
+        t0 = int(_t.time() * 1000)
         result = engine.answer_multihop(
             req.query,
             depth=req.depth,
@@ -230,6 +318,36 @@ def api_multihop_query(req: MultiHopQueryRequest):
             except Exception:
                 pass
         result["db"] = engine.db_name
+        # Log
+        try:
+            t1 = int(_t.time() * 1000)
+            result_metas = result.get("metadatas", [])
+            exp_logger.log(engine.db_name, {
+                "ts": t1,
+                "latency_ms": t1 - t0,
+                "route": "/api/multihop_query",
+                "db": engine.db_name,
+                "provider": req.provider or engine.default_provider,
+                "method": req.method,
+                "k": req.k,
+                "bm25_weight": req.bm25_weight,
+                "rerank_enable": req.rerank_enable,
+                "rerank_top_n": req.rerank_top_n,
+                "rrf_enable": req.rrf_enable,
+                "rrf_k": req.rrf_k,
+                "depth": req.depth,
+                "fanout": req.fanout,
+                "fanout_first_hop": req.fanout_first_hop,
+                "budget_ms": req.budget_ms,
+                "languages": None,  # multihop req không có languages trong model hiện tại
+                "versions": None,
+                "query": req.query,
+                "answer_len": len(result.get("answer", "")),
+                "contexts_count": len(result.get("contexts", [])),
+                "contexts_sources": [ (m or {}).get("source", "") for m in result_metas ],
+            })
+        except Exception:
+            pass
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -239,6 +357,8 @@ def api_multihop_query(req: MultiHopQueryRequest):
 def api_stream_multihop_query(req: MultiHopQueryRequest):
     try:
         def gen():
+            import time as _t
+            t0 = int(_t.time() * 1000)
             if req.db:
                 engine.use_db(req.db)
             # Chuẩn bị contexts qua multi-hop (không stream decomposition để đơn giản)
@@ -292,6 +412,31 @@ def api_stream_multihop_query(req: MultiHopQueryRequest):
                         chat_store.append_pair(engine.db_name, req.chat_id, req.query, "".join(answer_buf), {"metas": metas})
                     except Exception:
                         pass
+                # Log
+                try:
+                    t1 = int(_t.time() * 1000)
+                    exp_logger.log(engine.db_name, {
+                        "ts": t1,
+                        "latency_ms": t1 - t0,
+                        "route": "/api/stream_multihop_query",
+                        "db": engine.db_name,
+                        "provider": req.provider or engine.default_provider,
+                        "method": req.method,
+                        "k": req.k,
+                        "bm25_weight": req.bm25_weight,
+                        "rerank_enable": req.rerank_enable,
+                        "rerank_top_n": req.rerank_top_n,
+                        "depth": req.depth,
+                        "fanout": req.fanout,
+                        "fanout_first_hop": req.fanout_first_hop,
+                        "budget_ms": req.budget_ms,
+                        "query": req.query,
+                        "answer_len": len("".join(answer_buf)),
+                        "contexts_count": len(ctx_docs or []),
+                        "contexts_sources": [ (m or {}).get("source", "") for m in metas or [] ],
+                    })
+                except Exception:
+                    pass
         return StreamingResponse(gen(), media_type="text/plain")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -526,6 +671,54 @@ def api_eval_offline(req: EvalRequest):
             })
         recall = (hits / total) if total > 0 else 0.0
         return {"db": engine.db_name, "n": total, "hits": hits, "recall_at_k": recall, "details": details}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Logs APIs =====
+class LogsEnableReq(BaseModel):
+    db: Optional[str] = None
+    enabled: bool
+
+@app.get("/api/logs/info")
+def api_logs_info(db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        return exp_logger.info(engine.db_name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/logs/enable")
+def api_logs_enable(req: LogsEnableReq):
+    try:
+        if req.db:
+            engine.use_db(req.db)
+        return exp_logger.enable(engine.db_name, req.enabled)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/logs/export")
+def api_logs_export(db: Optional[str] = None, since: Optional[str] = None, until: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        content = exp_logger.export(engine.db_name, since=since, until=until)
+        from datetime import datetime as _dt
+        ts = _dt.utcnow().strftime("%Y%m%d-%H%M%S")
+        filename = f"logs-{engine.db_name}-{ts}.jsonl"
+        return Response(content=content, media_type="application/jsonl", headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/logs")
+def api_logs_clear(db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        cnt = exp_logger.clear(engine.db_name)
+        return {"status": "ok", "deleted_files": cnt}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

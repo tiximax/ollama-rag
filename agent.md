@@ -137,6 +137,12 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - API: thêm /api/feedback (POST/GET/DELETE) lưu feedback theo DB ở data/kb/{db}/feedback/feedback.jsonl; payload gồm score (-1|0|1), comment, query/answer, provider/method/k, filters, sources.
   - UI: thêm thanh feedback (👍/👎, comment, Gửi feedback) cạnh vùng hỏi.
   - Tests: thêm tests/e2e/feedback.spec.js xác nhận gửi và đọc lại feedback (PASS).
+- 2025-09-23: B9a — Export logs/JSONL tổng hợp:
+  - Tạo ExperimentLogger per-DB (data/{db}/logs/exp-YYYYMMDD.jsonl), bật/tắt theo DB (logs/settings.json).
+  - API: /api/logs/info, /api/logs/enable, /api/logs/export, DELETE /api/logs.
+  - Ghi log ở /api/query (sau trả lời), /api/stream_query (ngay sau contexts và ở finally), /api/multihop_query, /api/stream_multihop_query.
+  - UI: checkbox “Log experiments” + nút “Export Logs”.
+  - Tests: thêm tests/e2e/logs.spec.js (bật logs → gọi stream_query qua API -> export -> parse JSONL và assert). PASS.
 
 ## Kế hoạch R&D (Học thuật)
 Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.

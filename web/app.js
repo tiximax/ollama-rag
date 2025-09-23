@@ -55,6 +55,8 @@ const fbUpBtn = document.getElementById('btn-fb-up');
 const fbDownBtn = document.getElementById('btn-fb-down');
 const fbSendBtn = document.getElementById('btn-fb-send');
 const fbComment = document.getElementById('fb-comment');
+const logsEnableCk = document.getElementById('ck-logs-enable');
+const logsExportBtn = document.getElementById('btn-logs-export');
 
 async function loadProvider() {
   try {
@@ -102,6 +104,47 @@ async function loadFilters() {
 function getSelectedValues(selectEl) {
   if (!selectEl) return [];
   return Array.from(selectEl.selectedOptions || []).map(o => o.value).filter(Boolean);
+}
+
+async function loadLogsInfo() {
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    const resp = await fetch('/api/logs/info?' + params.toString());
+    const data = await resp.json();
+    if (resp.ok && logsEnableCk) logsEnableCk.checked = !!data.enabled;
+  } catch {}
+}
+
+async function setLogsEnabled(enabled) {
+  try {
+    const body = { db: dbSelect.value || null, enabled: !!enabled };
+    const resp = await fetch('/api/logs/enable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || resp.status);
+    }
+  } catch (e) {
+    alert('Không thể bật/tắt logs: ' + e);
+  }
+}
+
+async function exportLogs() {
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    const resp = await fetch('/api/logs/export?' + params.toString());
+    if (!resp.ok) throw new Error('Export logs thất bại');
+    const text = await resp.text();
+    const name = `logs-${dbSelect.value || 'default'}.jsonl`;
+    downloadFile(name, text, 'application/jsonl');
+  } catch (e) {
+    alert('Lỗi export logs: ' + e);
+  }
 }
 
 async function setProvider(name) {
@@ -743,6 +786,7 @@ dbSelect.addEventListener('change', async () => {
   if (name) await useDb(name);
   await loadChats();
   await loadFilters();
+  await loadLogsInfo();
 });
 
 dbCreateBtn.addEventListener('click', async () => { await createDb(); await loadChats(); });
@@ -761,9 +805,11 @@ if (evalRunBtn) evalRunBtn.addEventListener('click', runEval);
 if (fbUpBtn) fbUpBtn.addEventListener('click', () => { gFbScore = 1; });
 if (fbDownBtn) fbDownBtn.addEventListener('click', () => { gFbScore = -1; });
 if (fbSendBtn) fbSendBtn.addEventListener('click', sendFeedback);
+if (logsEnableCk) logsEnableCk.addEventListener('change', async () => { await setLogsEnabled(logsEnableCk.checked); });
+if (logsExportBtn) logsExportBtn.addEventListener('click', exportLogs);
 
 // init
-loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); }));
+loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); await loadLogsInfo(); }));
 
 methodSel.addEventListener('change', () => {
   const m = methodSel.value;
