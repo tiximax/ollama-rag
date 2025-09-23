@@ -748,6 +748,70 @@ def api_logs_clear(db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/logs/summary")
+def api_logs_summary(db: Optional[str] = None, since: Optional[str] = None, until: Optional[str] = None):
+    """Tóm tắt nhanh logs JSONL: tổng số, median latency, contexts_rate, phân bố theo route/provider/method."""
+    try:
+        if db:
+            engine.use_db(db)
+        raw = exp_logger.export(engine.db_name, since=since, until=until)
+        import json, statistics as stats
+        total = 0
+        latencies: list[float] = []
+        with_ctx = 0
+        by_route: dict[str,int] = {}
+        by_provider: dict[str,int] = {}
+        by_method: dict[str,int] = {}
+        first_ts = None
+        last_ts = None
+        for line in raw.splitlines():
+            try:
+                e = json.loads(line)
+            except Exception:
+                continue
+            total += 1
+            try:
+                lat = float(e.get('latency_ms') or 0)
+                if lat > 0:
+                    latencies.append(lat)
+            except Exception:
+                pass
+            try:
+                if (e.get('contexts_count') or 0) > 0:
+                    with_ctx += 1
+            except Exception:
+                pass
+            r = str(e.get('route') or '')
+            if r:
+                by_route[r] = by_route.get(r, 0) + 1
+            p = str(e.get('provider') or '')
+            if p:
+                by_provider[p] = by_provider.get(p, 0) + 1
+            m = str(e.get('method') or '')
+            if m:
+                by_method[m] = by_method.get(m, 0) + 1
+            ts = e.get('ts')
+            if isinstance(ts, (int, float)):
+                if first_ts is None or ts < first_ts: first_ts = ts
+                if last_ts is None or ts > last_ts: last_ts = ts
+        median = float(stats.median(latencies)) if latencies else 0.0
+        rate = (with_ctx/total) if total > 0 else 0.0
+        def top_k(d: dict[str,int], k: int = 5):
+            return sorted([{ 'key': k_, 'count': v_ } for k_, v_ in d.items()], key=lambda x: x['count'], reverse=True)[:k]
+        return {
+            'db': engine.db_name,
+            'total': total,
+            'median_latency_ms': median,
+            'contexts_rate': rate,
+            'by_route': top_k(by_route),
+            'by_provider': top_k(by_provider),
+            'by_method': top_k(by_method),
+            'first_ts': first_ts,
+            'last_ts': last_ts,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ===== Citations Export APIs =====
 @app.get("/api/citations/chat/{chat_id}")
 def api_citations_chat(chat_id: str, format: str = "json", db: Optional[str] = None, sources: Optional[str] = None, versions: Optional[str] = None, languages: Optional[str] = None):

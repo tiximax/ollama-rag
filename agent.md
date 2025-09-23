@@ -139,10 +139,10 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - Tests: thêm tests/e2e/feedback.spec.js xác nhận gửi và đọc lại feedback (PASS).
 - 2025-09-23: B9a — Export logs/JSONL tổng hợp:
   - Tạo ExperimentLogger per-DB (data/{db}/logs/exp-YYYYMMDD.jsonl), bật/tắt theo DB (logs/settings.json).
-  - API: /api/logs/info, /api/logs/enable, /api/logs/export, DELETE /api/logs.
+  - API: /api/logs/info, /api/logs/enable, /api/logs/export, DELETE /api/logs, /api/logs/summary.
   - Ghi log ở /api/query (sau trả lời), /api/stream_query (ngay sau contexts và ở finally), /api/multihop_query, /api/stream_multihop_query.
-  - UI: checkbox “Log experiments” + nút “Export Logs”.
-  - Tests: thêm tests/e2e/logs.spec.js (bật logs → gọi stream_query qua API -> export -> parse JSONL và assert). PASS.
+  - UI: checkbox “Log experiments”, nút “Export Logs”, panel “Logs Summary”.
+  - Tests: thêm tests/e2e/logs.spec.js (export JSONL), tests/e2e/logs_dashboard_ui.spec.js (UI). PASS.
 - 2025-09-23: B9b — Reranker optimize:
   - Backend: thêm tham số nâng cao cho reranker (rr_provider auto|bge|embed, rr_max_k, rr_batch_size, rr_num_threads). Giới hạn số lượng ứng viên rerank; hỗ trợ batch scoring cho BGE ONNX và thiết lập ORT_* threads.
   - API/UI: mở rộng body /api/query, /api/stream_query (và multihop fallback) và thêm UI “Reranker Advanced”.

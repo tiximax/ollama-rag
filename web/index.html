@@ -82,6 +82,24 @@
           <div><div><strong>Top languages</strong></div><ul id="an-top-langs"></ul></div>
         </div>
       </div>
+      <div class="logs-summary" style="margin: 8px 0; padding: 8px; border: 1px solid #ddd;">
+        <h3>Logs Summary</h3>
+        <div style="margin-bottom:6px;">
+          since <input id="logs-since" placeholder="YYYYMMDD" style="width:100px;" />
+          until <input id="logs-until" placeholder="YYYYMMDD" style="width:100px;" />
+          <button id="btn-logs-summary-refresh">Refresh</button>
+        </div>
+        <div class="logs-grid">
+          <div>Total: <strong id="lg-total">-</strong></div>
+          <div>Median latency(ms): <strong id="lg-med">-</strong></div>
+          <div>Contexts rate: <strong id="lg-rate">-</strong></div>
+        </div>
+        <div class="logs-lists" style="margin-top:6px; display:flex; gap:12px; flex-wrap:wrap;">
+          <div><div><strong>By route</strong></div><ul id="lg-by-route"></ul></div>
+          <div><div><strong>By provider</strong></div><ul id="lg-by-provider"></ul></div>
+          <div><div><strong>By method</strong></div><ul id="lg-by-method"></ul></div>
+        </div>
+      </div>
       <div class="query">
         <input id="txt-query" type="text" placeholder="Nhập câu hỏi..." />
         <label class="opt">k:

@@ -77,6 +77,16 @@ const anAnsMed = document.getElementById('an-ans-med');
 const anTopSources = document.getElementById('an-top-sources');
 const anTopVersions = document.getElementById('an-top-versions');
 const anTopLangs = document.getElementById('an-top-langs');
+// Logs summary elements
+const logsSince = document.getElementById('logs-since');
+const logsUntil = document.getElementById('logs-until');
+const logsSummaryBtn = document.getElementById('btn-logs-summary-refresh');
+const lgTotal = document.getElementById('lg-total');
+const lgMed = document.getElementById('lg-med');
+const lgRate = document.getElementById('lg-rate');
+const lgByRoute = document.getElementById('lg-by-route');
+const lgByProvider = document.getElementById('lg-by-provider');
+const lgByMethod = document.getElementById('lg-by-method');
 
 async function loadProvider() {
   try {
@@ -417,6 +427,36 @@ async function loadAnalytics() {
     renderList(anTopLangs, data.top_languages || []);
   } catch (e) {
     if (anChats) anChats.textContent = '-';
+  }
+}
+
+function renderListKV(el, arr) {
+  if (!el) return;
+  el.innerHTML = '';
+  (arr || []).forEach(it => {
+    const li = document.createElement('li');
+    li.textContent = `${it.key}: ${it.count}`;
+    el.appendChild(li);
+  });
+}
+
+async function loadLogsSummary() {
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    if (logsSince && logsSince.value.trim()) params.set('since', logsSince.value.trim());
+    if (logsUntil && logsUntil.value.trim()) params.set('until', logsUntil.value.trim());
+    const resp = await fetch('/api/logs/summary?' + params.toString());
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Summary lỗi');
+    if (lgTotal) lgTotal.textContent = String(data.total ?? '-');
+    if (lgMed) lgMed.textContent = String((data.median_latency_ms ?? 0).toFixed ? data.median_latency_ms.toFixed(2) : data.median_latency_ms);
+    if (lgRate) lgRate.textContent = String((data.contexts_rate ?? 0).toFixed ? data.contexts_rate.toFixed(2) : data.contexts_rate);
+    renderListKV(lgByRoute, data.by_route || []);
+    renderListKV(lgByProvider, data.by_provider || []);
+    renderListKV(lgByMethod, data.by_method || []);
+  } catch (e) {
+    if (lgTotal) lgTotal.textContent = '-';
   }
 }
 
@@ -844,6 +884,7 @@ dbSelect.addEventListener('change', async () => {
   await loadFilters();
   await loadLogsInfo();
   await loadAnalytics();
+  await loadLogsSummary();
 });
 
 dbCreateBtn.addEventListener('click', async () => { await createDb(); await loadChats(); });
@@ -865,6 +906,7 @@ if (fbSendBtn) fbSendBtn.addEventListener('click', sendFeedback);
 if (logsEnableCk) logsEnableCk.addEventListener('change', async () => { await setLogsEnabled(logsEnableCk.checked); });
 if (logsExportBtn) logsExportBtn.addEventListener('click', exportLogs);
 if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', loadAnalytics);
+if (logsSummaryBtn) logsSummaryBtn.addEventListener('click', loadLogsSummary);
 if (citationsChatBtn) citationsChatBtn.addEventListener('click', async () => {
   const id = chatSelect.value;
   if (!id) { alert('Chưa chọn chat'); return; }
@@ -899,7 +941,7 @@ if (citationsDbBtn) citationsDbBtn.addEventListener('click', async () => {
 });
 
 // init
-loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); await loadLogsInfo(); await loadAnalytics(); }));
+loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); await loadLogsInfo(); await loadAnalytics(); await loadLogsSummary(); }));
 
 methodSel.addEventListener('change', () => {
   const m = methodSel.value;
