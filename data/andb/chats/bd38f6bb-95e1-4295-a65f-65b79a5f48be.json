@@ -1,0 +1,62 @@
+{
+  "id": "bd38f6bb-95e1-4295-a65f-65b79a5f48be",
+  "name": "Analytics Chat",
+  "created_at": "2025-09-23T13:58:11.873842Z",
+  "updated_at": "2025-09-23T13:58:11.914601Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Bitsness là gì?",
+      "meta": {},
+      "ts": "2025-09-23T13:58:11.901597Z"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "meta": {
+        "metas": [
+          {
+            "chunk": 0,
+            "language": "unknown",
+            "source": "data/docs\\bitsness_sample.txt",
+            "version": "88b7b1c0"
+          },
+          {
+            "chunk": 0,
+            "language": "unknown",
+            "source": "data/docs\\en_traffic_sample.txt",
+            "version": "0f1c0f96"
+          }
+        ]
+      },
+      "ts": "2025-09-23T13:58:11.901597Z"
+    },
+    {
+      "role": "user",
+      "content": "Luật giao thông yêu cầu gì?",
+      "meta": {},
+      "ts": "2025-09-23T13:58:11.914601Z"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "meta": {
+        "metas": [
+          {
+            "chunk": 0,
+            "language": "unknown",
+            "source": "data/docs\\traffic_law_sample.txt",
+            "version": "f78fc9ad"
+          },
+          {
+            "chunk": 0,
+            "language": "unknown",
+            "source": "data/docs\\bitsness_sample.txt",
+            "version": "88b7b1c0"
+          }
+        ]
+      },
+      "ts": "2025-09-23T13:58:11.914601Z"
+    }
+  ]
+}

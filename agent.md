@@ -147,6 +147,10 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - Backend: thêm tham số nâng cao cho reranker (rr_provider auto|bge|embed, rr_max_k, rr_batch_size, rr_num_threads). Giới hạn số lượng ứng viên rerank; hỗ trợ batch scoring cho BGE ONNX và thiết lập ORT_* threads.
   - API/UI: mở rộng body /api/query, /api/stream_query (và multihop fallback) và thêm UI “Reranker Advanced”.
   - Tests: thêm tests/e2e/rerank_opt.spec.js (embed provider, rr_max_k=4, batch=4, threads=1). PASS.
+- 2025-09-23: B10a — Session analytics:
+  - API: /api/analytics/db (tổng hợp theo DB) và /api/analytics/chat/{chat_id} (tổng hợp theo chat): qa_pairs, answered, with_contexts, answer_len_avg/median, top_sources/versions/languages, first_ts/last_ts.
+  - Thuật toán: đọc chats JSON theo DB, đếm cặp Q/A (assistant), trích metadata từ metas (nguồn, version, language), tính trung bình và median độ dài câu trả lời.
+  - Tests: thêm tests/e2e/analytics.spec.js (tạo DB, ingest, tạo chat, gửi stream queries để lưu sớm, gọi analytics DB). PASS.
 
 ## Kế hoạch R&D (Học thuật)
 Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.

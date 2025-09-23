@@ -166,6 +166,7 @@ def api_stream_query(req: QueryRequest):
         def gen():
             import time as _t
             t0 = int(_t.time() * 1000)
+            saved_early = False
             if req.db:
                 engine.use_db(req.db)
             # Lấy contexts theo method đã chọn, có thể áp dụng reranker trước khi stream
@@ -228,6 +229,13 @@ def api_stream_query(req: QueryRequest):
             # Gửi contexts trước dưới dạng JSON đánh dấu
             header = {"contexts": ctx_docs, "metadatas": metas, "db": engine.db_name}
             yield "[[CTXJSON]]" + json.dumps(header) + "\n"
+            # Lưu chat sớm (trả lời rỗng) ngay sau khi có contexts (giúp analytics và test nhanh)
+            if req.save_chat and req.chat_id and not saved_early:
+                try:
+                    chat_store.append_pair(engine.db_name, req.chat_id, req.query, "", {"metas": metas})
+                    saved_early = True
+                except Exception:
+                    saved_early = False
             # Log sớm ngay sau khi có contexts để export logs không phải đợi sinh câu trả lời
             try:
                 exp_logger.log(engine.db_name, {
@@ -263,8 +271,8 @@ def api_stream_query(req: QueryRequest):
             except Exception:
                 return
             finally:
-                # Lưu chat nếu cần
-                if req.save_chat and req.chat_id:
+                # Lưu chat nếu cần (nếu chưa lưu sớm)
+                if req.save_chat and req.chat_id and not saved_early:
                     try:
                         chat_store.append_pair(engine.db_name, req.chat_id, req.query, "".join(answer_buf), {"metas": metas})
                     except Exception:
@@ -731,6 +739,148 @@ def api_logs_clear(db: Optional[str] = None):
             engine.use_db(db)
         cnt = exp_logger.clear(engine.db_name)
         return {"status": "ok", "deleted_files": cnt}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Analytics APIs =====
+class AnalyticsSummary(BaseModel):
+    chats: int
+    qa_pairs: int
+    answered: int
+    with_contexts: int
+    answer_len_avg: float
+    answer_len_median: float
+    top_sources: List[Dict[str, Any]]
+    top_versions: List[Dict[str, Any]]
+    top_languages: List[Dict[str, Any]]
+    first_ts: Optional[str] = None
+    last_ts: Optional[str] = None
+
+def _compute_chat_summary(chat: Dict[str, Any]) -> Dict[str, Any]:
+    msgs = chat.get('messages', []) or []
+    qa = 0
+    answered = 0
+    with_ctx = 0
+    ans_lens: List[int] = []  # type: ignore[name-defined]
+    src_counts: Dict[str, int] = {}
+    ver_counts: Dict[str, int] = {}
+    lang_counts: Dict[str, int] = {}
+    first_ts: Optional[str] = None
+    last_ts: Optional[str] = None
+    for m in msgs:
+        ts = m.get('ts')
+        if isinstance(ts, str):
+            if first_ts is None or ts < first_ts: first_ts = ts
+            if last_ts is None or ts > last_ts: last_ts = ts
+        if m.get('role') == 'assistant':
+            qa += 1
+            a = m.get('content') or ''
+            if a.strip():
+                answered += 1
+                ans_lens.append(len(a))
+            meta = m.get('meta') or {}
+            metas = meta.get('metas') or []
+            if isinstance(metas, list) and metas:
+                with_ctx += 1
+                for md in metas:
+                    src = str((md or {}).get('source', '') or '')
+                    if src:
+                        src_counts[src] = src_counts.get(src, 0) + 1
+                    ver = str((md or {}).get('version', '') or '')
+                    if ver:
+                        ver_counts[ver] = ver_counts.get(ver, 0) + 1
+                    lang = str((md or {}).get('language', '') or '')
+                    if lang:
+                        lang_counts[lang] = lang_counts.get(lang, 0) + 1
+    import statistics as stats  # type: ignore
+    avg = float(sum(ans_lens)/len(ans_lens)) if ans_lens else 0.0
+    med = float(stats.median(ans_lens)) if ans_lens else 0.0
+    def top_k(d: Dict[str, int], k: int = 5) -> List[Dict[str, Any]]:
+        items = sorted(d.items(), key=lambda x: x[1], reverse=True)[:k]
+        return [{ 'value': k_, 'count': v_ } for (k_, v_) in items]
+    return {
+        'qa_pairs': qa,
+        'answered': answered,
+        'with_contexts': with_ctx,
+        'answer_len_avg': avg,
+        'answer_len_median': med,
+        'top_sources': top_k(src_counts),
+        'top_versions': top_k(ver_counts),
+        'top_languages': top_k(lang_counts),
+        'first_ts': first_ts,
+        'last_ts': last_ts,
+    }
+
+@app.get("/api/analytics/db")
+def api_analytics_db(db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        chats = chat_store.list(engine.db_name)
+        merged = {
+            'chats': len(chats), 'qa_pairs': 0, 'answered': 0, 'with_contexts': 0,
+            'answer_len_sum': 0.0, 'answer_len_count': 0, 'all_lens': [],
+            'src': {}, 'ver': {}, 'lang': {}, 'first_ts': None, 'last_ts': None,
+        }
+        for ch in chats:
+            data = chat_store.get(engine.db_name, ch.get('id'))
+            if not data:
+                continue
+            s = _compute_chat_summary(data)
+            merged['qa_pairs'] += s['qa_pairs']
+            merged['answered'] += s['answered']
+            merged['with_contexts'] += s['with_contexts']
+            if s['answer_len_avg'] and s['answered']:
+                merged['answer_len_sum'] += s['answer_len_avg'] * s['answered']
+                merged['answer_len_count'] += s['answered']
+            merged['all_lens'].extend([0]*0)  # placeholder, không dùng median tổng hợp tại đây
+            for item in s['top_sources']:
+                v = item['value']; c = int(item['count'])
+                merged['src'][v] = merged['src'].get(v, 0) + c
+            for item in s['top_versions']:
+                v = item['value']; c = int(item['count'])
+                merged['ver'][v] = merged['ver'].get(v, 0) + c
+            for item in s['top_languages']:
+                v = item['value']; c = int(item['count'])
+                merged['lang'][v] = merged['lang'].get(v, 0) + c
+            ft = s.get('first_ts'); lt = s.get('last_ts')
+            if ft and (merged['first_ts'] is None or ft < merged['first_ts']): merged['first_ts'] = ft
+            if lt and (merged['last_ts'] is None or lt > merged['last_ts']): merged['last_ts'] = lt
+        avg = (merged['answer_len_sum']/merged['answer_len_count']) if merged['answer_len_count'] else 0.0
+        def top_k(d: Dict[str, int], k: int = 5) -> List[Dict[str, Any]]:
+            items = sorted(d.items(), key=lambda x: x[1], reverse=True)[:k]
+            return [{ 'value': k_, 'count': v_ } for (k_, v_) in items]
+        return {
+            'db': engine.db_name,
+            'chats': merged['chats'],
+            'qa_pairs': merged['qa_pairs'],
+            'answered': merged['answered'],
+            'with_contexts': merged['with_contexts'],
+            'answer_len_avg': float(avg),
+            'answer_len_median': None,  # không tính median gộp
+            'top_sources': top_k(merged['src']),
+            'top_versions': top_k(merged['ver']),
+            'top_languages': top_k(merged['lang']),
+            'first_ts': merged['first_ts'],
+            'last_ts': merged['last_ts'],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/analytics/chat/{chat_id}")
+def api_analytics_chat(chat_id: str, db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        data = chat_store.get(engine.db_name, chat_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        s = _compute_chat_summary(data)
+        out = {'db': engine.db_name, 'chat_id': chat_id}
+        out.update(s)
+        return out
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
