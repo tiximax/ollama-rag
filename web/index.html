@@ -84,6 +84,24 @@
           Top-N:
           <input id="rerank-topn" type="number" min="1" max="50" value="10" />
         </label>
+        <span id="rerank-adv" style="display:none; margin-left:8px;">
+          <label class="opt">Rerank provider:
+            <select id="rr-provider">
+              <option value="auto" selected>Auto</option>
+              <option value="bge">BGE</option>
+              <option value="embed">Embed</option>
+            </select>
+          </label>
+          <label class="opt">rr_max_k:
+            <input id="rr-maxk" type="number" min="1" max="100" value="10" />
+          </label>
+          <label class="opt">batch:
+            <input id="rr-batch" type="number" min="1" max="64" value="16" />
+          </label>
+          <label class="opt">threads:
+            <input id="rr-threads" type="number" min="1" max="8" value="1" />
+          </label>
+        </span>
         <label class="opt" id="rewrite-wrap">
           <input id="ck-rewrite" type="checkbox" /> Rewrite
           <span id="rewrite-n-wrap" style="display:none;">

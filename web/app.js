@@ -13,6 +13,11 @@ const bm25Val = document.getElementById('bm25-weight-val');
 const rerankCk = document.getElementById('ck-rerank');
 const rerankTopWrap = document.getElementById('rerank-topn-wrap');
 const rerankTopN = document.getElementById('rerank-topn');
+const rerankAdv = document.getElementById('rerank-adv');
+const rrProvider = document.getElementById('rr-provider');
+const rrMaxK = document.getElementById('rr-maxk');
+const rrBatch = document.getElementById('rr-batch');
+const rrThreads = document.getElementById('rr-threads');
 const rewriteCk = document.getElementById('ck-rewrite');
 const rewriteNWrap = document.getElementById('rewrite-n-wrap');
 const rewriteN = document.getElementById('rewrite-n');
@@ -645,6 +650,12 @@ async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat, opt) 
   const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
   const provider = providerSel ? providerSel.value : undefined;
   const payload = { query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null };
+  if (rerank_enable && rrProvider) {
+    payload.rr_provider = rrProvider.value;
+    payload.rr_max_k = parseInt((rrMaxK && rrMaxK.value) || '10', 10);
+    payload.rr_batch_size = parseInt((rrBatch && rrBatch.value) || '16', 10);
+    payload.rr_num_threads = parseInt((rrThreads && rrThreads.value) || '1', 10);
+  }
   if (opt) {
     if (typeof opt.rewrite_enable !== 'undefined') {
       payload.rewrite_enable = !!opt.rewrite_enable;
@@ -818,7 +829,9 @@ methodSel.addEventListener('change', () => {
 });
 
 rerankCk.addEventListener('change', () => {
-  rerankTopWrap.style.display = rerankCk.checked ? '' : 'none';
+  const on = rerankCk.checked;
+  rerankTopWrap.style.display = on ? '' : 'none';
+  if (rerankAdv) rerankAdv.style.display = on ? '' : 'none';
 });
 
 bm25Range.addEventListener('input', () => {

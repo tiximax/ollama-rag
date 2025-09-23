@@ -143,6 +143,10 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - Ghi log ở /api/query (sau trả lời), /api/stream_query (ngay sau contexts và ở finally), /api/multihop_query, /api/stream_multihop_query.
   - UI: checkbox “Log experiments” + nút “Export Logs”.
   - Tests: thêm tests/e2e/logs.spec.js (bật logs → gọi stream_query qua API -> export -> parse JSONL và assert). PASS.
+- 2025-09-23: B9b — Reranker optimize:
+  - Backend: thêm tham số nâng cao cho reranker (rr_provider auto|bge|embed, rr_max_k, rr_batch_size, rr_num_threads). Giới hạn số lượng ứng viên rerank; hỗ trợ batch scoring cho BGE ONNX và thiết lập ORT_* threads.
+  - API/UI: mở rộng body /api/query, /api/stream_query (và multihop fallback) và thêm UI “Reranker Advanced”.
+  - Tests: thêm tests/e2e/rerank_opt.spec.js (embed provider, rr_max_k=4, batch=4, threads=1). PASS.
 
 ## Kế hoạch R&D (Học thuật)
 Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.

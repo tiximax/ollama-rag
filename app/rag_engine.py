@@ -508,17 +508,43 @@ class RagEngine:
         if self._embed_rr is None:
             self._embed_rr = SimpleEmbedReranker(self.ollama.embed)
 
-    def _apply_rerank(self, question: str, docs: List[str], metas: List[Dict[str, Any]], top_k: int) -> Tuple[List[str], List[Dict[str, Any]]]:
-        self._ensure_rerankers()
-        # Ưu tiên BGE ONNX nếu khả dụng; nếu lỗi thì fallback embedding
-        if self._bge_rr and self._bge_rr.available():
+    def _apply_rerank(self, question: str, docs: List[str], metas: List[Dict[str, Any]], top_k: int,
+                       rr_provider: Optional[str] = None,
+                       rr_max_k: Optional[int] = None,
+                       rr_batch_size: Optional[int] = None,
+                       rr_num_threads: Optional[int] = None) -> Tuple[List[str], List[Dict[str, Any]]]:
+        # Giới hạn số lượng doc cần rerank (tiết kiệm chi phí)
+        maxk = int(rr_max_k) if rr_max_k is not None else len(docs)
+        if maxk <= 0:
+            maxk = len(docs)
+        docs_in = docs[:maxk]
+        metas_in = metas[:maxk]
+
+        provider = (rr_provider or "auto").lower()
+        # Cập nhật threads cho ONNX nếu được yêu cầu (tạo lại session để áp dụng)
+        if rr_num_threads is not None and rr_num_threads > 0:
             try:
-                return self._bge_rr.rerank(question, docs, metas, top_k)
+                os.environ["ORT_INTRA_OP_THREADS"] = str(int(rr_num_threads))
+                os.environ["ORT_INTER_OP_THREADS"] = str(int(rr_num_threads))
             except Exception:
                 pass
-        # Fallback
+
+        self._ensure_rerankers()
+        use_bge = False
+        if provider in ("auto", "bge") and self._bge_rr and self._bge_rr.available():
+            use_bge = True
+        elif provider == "bge":
+            use_bge = False  # cưỡng bức bge nhưng không available → fallback
+
+        if use_bge and self._bge_rr:
+            try:
+                bs = int(rr_batch_size) if rr_batch_size else 16
+                return self._bge_rr.rerank(question, docs_in, metas_in, top_k, batch_size=bs)
+            except Exception:
+                pass
+        # Fallback embed
         assert self._embed_rr is not None
-        return self._embed_rr.rerank(question, docs, metas, top_k)
+        return self._embed_rr.rerank(question, docs_in, metas_in, top_k)
 
     def _get_llm(self, provider: Optional[str] = None):
         name = (provider or self.default_provider or "ollama").lower()
@@ -624,7 +650,7 @@ class RagEngine:
         out_metas = [m for _, _, m in combined[:top_k]]
         return {"documents": out_docs, "metadatas": out_metas}
 
-    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10, provider: Optional[str] = None, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None, rewrite_enable: bool = False, rewrite_n: int = 2, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
+    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10, provider: Optional[str] = None, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None, rewrite_enable: bool = False, rewrite_n: int = 2, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None, rr_provider: Optional[str] = None, rr_max_k: Optional[int] = None, rr_batch_size: Optional[int] = None, rr_num_threads: Optional[int] = None) -> Dict[str, Any]:
         method = (method or "vector").lower()
         base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
         retrieved = self.retrieve_aggregate(
@@ -643,7 +669,7 @@ class RagEngine:
         docs = retrieved.get("documents", [])
         metas = retrieved.get("metadatas", [])
         if rerank_enable and docs:
-            docs, metas = self._apply_rerank(question, docs, metas, top_k)
+            docs, metas = self._apply_rerank(question, docs, metas, top_k, rr_provider=rr_provider, rr_max_k=rr_max_k, rr_batch_size=rr_batch_size, rr_num_threads=rr_num_threads)
         else:
             docs = docs[:top_k]
             metas = metas[:top_k]

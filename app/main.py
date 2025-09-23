@@ -64,6 +64,10 @@ class QueryRequest(BaseModel):
     db: str | None = None
     languages: Optional[List[str]] = None
     versions: Optional[List[str]] = None
+    rr_provider: Optional[str] = None  # auto|bge|embed
+    rr_max_k: Optional[int] = None
+    rr_batch_size: Optional[int] = None
+    rr_num_threads: Optional[int] = None
 
 
 class MultiHopQueryRequest(BaseModel):
@@ -85,6 +89,10 @@ class MultiHopQueryRequest(BaseModel):
     db: str | None = None
     languages: Optional[List[str]] = None
     versions: Optional[List[str]] = None
+    rr_provider: Optional[str] = None
+    rr_max_k: Optional[int] = None
+    rr_batch_size: Optional[int] = None
+    rr_num_threads: Optional[int] = None
 
 
 @app.post("/api/query")
@@ -108,6 +116,10 @@ def api_query(req: QueryRequest):
             rewrite_n=req.rewrite_n,
             languages=req.languages,
             versions=req.versions,
+            rr_provider=req.rr_provider,
+            rr_max_k=req.rr_max_k,
+            rr_batch_size=req.rr_batch_size,
+            rr_num_threads=req.rr_num_threads,
         )
         # Lưu chat nếu cần
         if req.save_chat and req.chat_id:
@@ -209,7 +221,7 @@ def api_stream_query(req: QueryRequest):
                     pass
             if req.rerank_enable and ctx_docs:
                 # dùng hàm private trong engine để giữ logic nhất quán
-                ctx_docs, metas = engine._apply_rerank(req.query, ctx_docs, metas, req.k)  # type: ignore[attr-defined]
+                ctx_docs, metas = engine._apply_rerank(req.query, ctx_docs, metas, req.k, rr_provider=req.rr_provider, rr_max_k=req.rr_max_k, rr_batch_size=req.rr_batch_size, rr_num_threads=req.rr_num_threads)  # type: ignore[attr-defined]
             else:
                 ctx_docs = ctx_docs[:req.k]
                 metas = metas[:req.k]
@@ -339,8 +351,8 @@ def api_multihop_query(req: MultiHopQueryRequest):
                 "fanout": req.fanout,
                 "fanout_first_hop": req.fanout_first_hop,
                 "budget_ms": req.budget_ms,
-                "languages": None,  # multihop req không có languages trong model hiện tại
-                "versions": None,
+                "languages": req.languages,
+                "versions": req.versions,
                 "query": req.query,
                 "answer_len": len(result.get("answer", "")),
                 "contexts_count": len(result.get("contexts", [])),
@@ -391,7 +403,7 @@ def api_stream_multihop_query(req: MultiHopQueryRequest):
                 ctx_docs = retrieved.get("documents", [])
                 metas = retrieved.get("metadatas", [])
                 if req.rerank_enable and ctx_docs:
-                    ctx_docs, metas = engine._apply_rerank(req.query, ctx_docs, metas, req.k)  # type: ignore[attr-defined]
+                    ctx_docs, metas = engine._apply_rerank(req.query, ctx_docs, metas, req.k, rr_provider=req.rr_provider, rr_max_k=req.rr_max_k, rr_batch_size=req.rr_batch_size, rr_num_threads=req.rr_num_threads)  # type: ignore[attr-defined]
                 else:
                     ctx_docs = ctx_docs[:req.k]
                     metas = metas[:req.k]

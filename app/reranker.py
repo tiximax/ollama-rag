@@ -110,8 +110,8 @@ class BgeOnnxReranker:
             scores.extend(logits.tolist())
         return scores
 
-    def rerank(self, query: str, docs: List[str], metas: List[Dict[str, Any]], top_k: int) -> Tuple[List[str], List[Dict[str, Any]]]:
-        scores = self.score(query, docs)
+    def rerank(self, query: str, docs: List[str], metas: List[Dict[str, Any]], top_k: int, batch_size: int = 16) -> Tuple[List[str], List[Dict[str, Any]]]:
+        scores = self.score(query, docs, batch_size=batch_size)
         idxs = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
         return [docs[i] for i in idxs], [metas[i] for i in idxs]
 
