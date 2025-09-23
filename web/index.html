@@ -36,7 +36,16 @@
             <button id="btn-chat-search">Search</button>
           </label>
         </div>
-        <button id="btn-ingest">Index tài liệu mẫu</button>
+        <div class="ingest-bar">
+          <button id="btn-ingest">Index tài liệu mẫu</button>
+          <label class="opt">Version:
+            <input id="ingest-version" type="text" placeholder="Phiên bản (optional)" />
+          </label>
+          <label class="opt">Paths:
+            <input id="ingest-paths" type="text" placeholder="Đường dẫn hoặc glob (ví dụ data/docs/*.txt)" />
+          </label>
+          <button id="btn-ingest-paths">Ingest Paths</button>
+        </div>
       </div>
       <div class="query">
         <input id="txt-query" type="text" placeholder="Nhập câu hỏi..." />
@@ -87,6 +96,12 @@
         <label class="opt" id="multihop-budget-wrap" style="display:none;">
           Budget(ms):
           <input id="hop-budget" type="number" min="0" max="60000" value="0" />
+        </label>
+        <label class="opt">Language:
+          <select id="filter-langs" multiple size="3"></select>
+        </label>
+        <label class="opt">Version:
+          <select id="filter-versions" multiple size="3"></select>
         </label>
         <label class="opt">Provider:
           <select id="provider-select">

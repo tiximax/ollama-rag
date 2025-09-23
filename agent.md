@@ -123,6 +123,12 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 
 ## Tiến trình gần nhất
 - 2025-09-21: Thêm Provider switch (OpenAI/Ollama), UI dropdown, API /api/provider; giữ Embeddings bằng Ollama. Test e2e (light) không hồi quy.
+- 2025-09-23: B6 — Versioning + Language filtering: 
+  - Ingest: tự động nhận diện ngôn ngữ từng chunk bằng langid; thêm metadata version (nhập tay từ UI, fallback hash nội dung).
+  - Retrieval: thêm lọc theo languages[]/versions[] cho vector, BM25, hybrid, aggregate và multi-hop.
+  - API: mở rộng body cho /api/query, /api/stream_query, /api/multihop_query, /api/stream_multihop_query; thêm /api/filters trả về danh sách distinct language/version theo DB.
+  - UI: thêm Ingest Version, Ingest Paths (tùy chọn), bộ lọc Language/Version (multi-select) trong panel truy vấn.
+  - Tests: thêm tests/e2e/filters.spec.js (BM25 + streaming) để kiểm tra lọc theo ngôn ngữ và phiên bản. 
 
 ## Kế hoạch R&D (Học thuật)
 Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.

@@ -1,0 +1,24 @@
+version: "3.9"
+services:
+  rag2app:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: rag2app
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    volumes:
+      - ../../data:/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    depends_on:
+      - rag2app
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    command: tunnel run
+    restart: unless-stopped

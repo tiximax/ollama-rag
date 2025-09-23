@@ -29,6 +29,7 @@ def root():
 class IngestRequest(BaseModel):
     paths: List[str] = ["data/docs"]
     db: str | None = None
+    version: Optional[str] = None
 
 
 @app.post("/api/ingest")
@@ -36,7 +37,7 @@ def api_ingest(req: IngestRequest):
     try:
         if req.db:
             engine.use_db(req.db)
-        count = engine.ingest_paths(req.paths)
+        count = engine.ingest_paths(req.paths, version=req.version)
         return {"status": "ok", "chunks_indexed": count, "db": engine.db_name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -57,6 +58,8 @@ class QueryRequest(BaseModel):
     chat_id: Optional[str] = None
     save_chat: bool = True
     db: str | None = None
+    languages: Optional[List[str]] = None
+    versions: Optional[List[str]] = None
 
 
 class MultiHopQueryRequest(BaseModel):
@@ -76,8 +79,8 @@ class MultiHopQueryRequest(BaseModel):
     chat_id: Optional[str] = None
     save_chat: bool = True
     db: str | None = None
-    save_chat: bool = True
-    db: str | None = None
+    languages: Optional[List[str]] = None
+    versions: Optional[List[str]] = None
 
 
 @app.post("/api/query")
@@ -97,6 +100,8 @@ def api_query(req: QueryRequest):
             rrf_k=req.rrf_k,
             rewrite_enable=req.rewrite_enable,
             rewrite_n=req.rewrite_n,
+            languages=req.languages,
+            versions=req.versions,
         )
         # Lưu chat nếu cần
         if req.save_chat and req.chat_id:
@@ -129,14 +134,16 @@ def api_stream_query(req: QueryRequest):
                     rewrite_enable=True,
                     rewrite_n=req.rewrite_n,
                     provider=req.provider,
+                    languages=req.languages,
+                    versions=req.versions,
                 )
             else:
                 if req.method == "bm25":
-                    retrieved = engine.retrieve_bm25(req.query, top_k=base_k)
+                    retrieved = engine.retrieve_bm25(req.query, top_k=base_k, languages=req.languages, versions=req.versions)
                 elif req.method == "hybrid":
-                    retrieved = engine.retrieve_hybrid(req.query, top_k=base_k, bm25_weight=req.bm25_weight, rrf_enable=req.rrf_enable, rrf_k=req.rrf_k)
+                    retrieved = engine.retrieve_hybrid(req.query, top_k=base_k, bm25_weight=req.bm25_weight, rrf_enable=req.rrf_enable, rrf_k=req.rrf_k, languages=req.languages, versions=req.versions)
                 else:
-                    retrieved = engine.retrieve(req.query, top_k=base_k)
+                    retrieved = engine.retrieve(req.query, top_k=base_k, languages=req.languages, versions=req.versions)
             ctx_docs = retrieved["documents"]
             metas = retrieved["metadatas"]
             # Fallback nếu không có contexts
@@ -212,6 +219,8 @@ def api_multihop_query(req: MultiHopQueryRequest):
             rrf_k=req.rrf_k,
             fanout_first_hop=req.fanout_first_hop,
             budget_ms=req.budget_ms,
+            languages=req.languages,
+            versions=req.versions,
         )
         if req.save_chat and req.chat_id:
             try:
@@ -243,6 +252,8 @@ def api_stream_multihop_query(req: MultiHopQueryRequest):
                 skip_answer=True,
                 fanout_first_hop=req.fanout_first_hop,
                 budget_ms=req.budget_ms,
+                languages=req.languages,
+                versions=req.versions,
             )
             ctx_docs = mh.get("contexts", [])
             metas = mh.get("metadatas", [])
@@ -407,6 +418,16 @@ def api_chats_export(chat_id: str, format: str = "json", db: Optional[str] = Non
 # ===== Provider APIs =====
 class ProviderName(BaseModel):
     name: str
+
+# ===== Filters API =====
+@app.get("/api/filters")
+def api_get_filters(db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        return engine.get_filters()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/provider")
 def api_get_provider():

@@ -1,0 +1,11 @@
+# Mẫu config Cloudflare Tunnel cho chạy native (Windows)
+# Đặt file này bên trong C:\Users\pc\.cloudflared\config.yml sau khi tạo Tunnel
+# LƯU Ý: thay <TUNNEL_ID> và đường dẫn credentials-file cho đúng của bạn
+
+tunnel: <TUNNEL_ID>
+credentials-file: C:\Users\pc\.cloudflared\<TUNNEL_ID>.json
+
+ingress:
+  - hostname: rag2.yourdomain.com
+    service: http://localhost:8000
+  - service: http_status:404

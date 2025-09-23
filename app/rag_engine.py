@@ -5,6 +5,7 @@ import shutil
 import json
 import logging
 import time
+import hashlib
 from typing import List, Dict, Any, Sequence, Optional, Tuple
 
 from dotenv import load_dotenv
@@ -21,6 +22,11 @@ try:
     from rank_bm25 import BM25Okapi  # type: ignore
 except Exception:  # pragma: no cover
     BM25Okapi = None  # fallback if package not installed
+
+try:
+    import langid  # type: ignore
+except Exception:  # pragma: no cover
+    langid = None  # optional dependency
 
 load_dotenv()
 # Giảm nhiễu log/telemetry từ chromadb trong test/CI
@@ -119,6 +125,9 @@ class RagEngine:
         # Reranker
         self._bge_rr: Optional[BgeOnnxReranker] = None
         self._embed_rr: Optional[SimpleEmbedReranker] = None
+        
+        # Filters cache (optional)
+        self._filters_cache: Dict[str, List[str]] = {}
 
     # ===== Multi-DB =====
     @property
@@ -193,23 +202,43 @@ class RagEngine:
             self._init_client()
 
     # ===== Ingest =====
-    def ingest_texts(self, texts: List[str], metadatas: List[Dict[str, Any]] | None = None) -> int:
+    def _detect_lang(self, text: str) -> Optional[str]:
+        try:
+            if langid is None:
+                return None
+            code, _ = langid.classify(text)
+            return code
+        except Exception:
+            return None
+
+    def ingest_texts(self, texts: List[str], metadatas: List[Dict[str, Any]] | None = None, version: Optional[str] = None) -> int:
         ids: IDs = []
         docs: Documents = []
         mds: Metadatas = []
 
         for i, t in enumerate(texts):
+            # Version cho cả tài liệu này (áp cho tất cả chunks)
+            ver = (version or (hashlib.md5(t.encode("utf-8")).hexdigest()[:8]))
+            src_val = metadatas[i].get("source") if metadatas else f"text_{i}"
             for j, chunk in enumerate(chunk_text(t)):
                 ids.append(str(uuid.uuid4()))
                 docs.append(chunk)
-                meta = {"source": metadatas[i].get("source") if metadatas else f"text_{i}", "chunk": j}
+                lang = self._detect_lang(chunk) or "unknown"
+                meta = {
+                    "source": src_val,
+                    "chunk": j,
+                    "version": ver,
+                    "language": lang,
+                }
                 mds.append(meta)
         self.collection.add(ids=ids, documents=docs, metadatas=mds)
         # invalidate bm25 to rebuild on next query
         self._bm25 = None
+        # clear filters cache
+        self._filters_cache.clear()
         return len(docs)
 
-    def ingest_paths(self, paths: List[str]) -> int:
+    def ingest_paths(self, paths: List[str], version: Optional[str] = None) -> int:
         import glob
 
         contents: List[str] = []
@@ -251,7 +280,7 @@ class RagEngine:
                         metas.append({"source": file})
         if not contents:
             return 0
-        return self.ingest_texts(contents, metas)
+        return self.ingest_texts(contents, metas, version=version)
 
     # ===== Tokenize & BM25 =====
     @staticmethod
@@ -294,6 +323,8 @@ class RagEngine:
         self._bm25_docs = new_docs
         self._bm25_metas = new_metas
         self._bm25_tokens = new_tokens
+        # clear filters cache as corpus changed
+        self._filters_cache.clear()
 
     def _ensure_bm25(self) -> bool:
         if self._bm25 is None:
@@ -301,24 +332,58 @@ class RagEngine:
         return self._bm25 is not None
 
     # ===== Retrieval =====
-    def retrieve(self, query: str, top_k: int = 5) -> Dict[str, Any]:
-        results = self.collection.query(query_texts=[query], n_results=top_k)
-        docs = results.get("documents", [[]])[0]
-        metas = results.get("metadatas", [[]])[0]
-        dists = results.get("distances", [[]])[0]
-        ids = results.get("ids", [[]])[0] if "ids" in results else []
-        return {"documents": docs, "metadatas": metas, "distances": dists, "ids": ids}
+    def _meta_match(self, meta: Dict[str, Any], languages: Optional[List[str]], versions: Optional[List[str]]) -> bool:
+        if languages:
+            lang = meta.get("language")
+            if lang is None or str(lang) not in set(languages):
+                return False
+        if versions:
+            ver = meta.get("version")
+            if ver is None or str(ver) not in set(versions):
+                return False
+        return True
 
-    def retrieve_bm25(self, query: str, top_k: int = 5) -> Dict[str, Any]:
+    def retrieve(self, query: str, top_k: int = 5, *, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
+        # Lấy nhiều hơn rồi lọc theo metadata (an toàn giữa các phiên bản chroma)
+        n_fetch = max(top_k * 5, 25)
+        n_fetch = min(n_fetch, 200)
+        results = self.collection.query(query_texts=[query], n_results=n_fetch)
+        docs_all: List[str] = results.get("documents", [[]])[0]
+        metas_all: List[Dict[str, Any]] = results.get("metadatas", [[]])[0]
+        dists_all: List[float] = results.get("distances", [[]])[0]
+        ids_all = results.get("ids", [[]])[0] if "ids" in results else []
+        # Lọc theo metadata và giữ thứ tự
+        filt_docs: List[str] = []
+        filt_metas: List[Dict[str, Any]] = []
+        filt_dists: List[float] = []
+        filt_ids: List[str] = []
+        for d, m, dist, idv in zip(docs_all, metas_all, dists_all, ids_all or [None] * len(docs_all)):
+            if self._meta_match(m or {}, languages, versions):
+                filt_docs.append(d)
+                filt_metas.append(m)
+                filt_dists.append(dist)
+                if ids_all:
+                    filt_ids.append(idv)  # type: ignore[arg-type]
+            if len(filt_docs) >= top_k:
+                break
+        return {"documents": filt_docs[:top_k], "metadatas": filt_metas[:top_k], "distances": filt_dists[:top_k], "ids": filt_ids[:top_k] if filt_ids else []}
+
+    def retrieve_bm25(self, query: str, top_k: int = 5, *, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
         if not self._ensure_bm25():
             return {"documents": [], "metadatas": [], "scores": []}
         q_tokens = self._tokenize(query)
         scores_list = list(self._bm25.get_scores(q_tokens))  # type: ignore[union-attr]
-        # top indices by score desc
-        idxs = sorted(range(len(scores_list)), key=lambda i: scores_list[i], reverse=True)[:top_k]
-        docs = [self._bm25_docs[i] for i in idxs]
-        metas = [self._bm25_metas[i] for i in idxs]
-        scores = [scores_list[i] for i in idxs]
+        # chỉ lấy các chỉ số khớp filter theo thứ tự điểm giảm dần
+        idxs_sorted = sorted(range(len(scores_list)), key=lambda i: scores_list[i], reverse=True)
+        sel: List[int] = []
+        for i in idxs_sorted:
+            if self._meta_match(self._bm25_metas[i] or {}, languages, versions):
+                sel.append(i)
+                if len(sel) >= top_k:
+                    break
+        docs = [self._bm25_docs[i] for i in sel]
+        metas = [self._bm25_metas[i] for i in sel]
+        scores = [scores_list[i] for i in sel]
         return {"documents": docs, "metadatas": metas, "scores": scores}
 
     @staticmethod
@@ -341,10 +406,10 @@ class RagEngine:
     def _make_key(doc: str, meta: Dict[str, Any]) -> Tuple[str, Any, Any]:
         return (meta.get("source", ""), meta.get("chunk", -1), len(doc))
 
-    def retrieve_hybrid(self, query: str, top_k: int = 5, bm25_weight: float = 0.5, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None) -> Dict[str, Any]:
+    def retrieve_hybrid(self, query: str, top_k: int = 5, bm25_weight: float = 0.5, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None, *, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
         # Fetch candidates
-        vec = self.retrieve(query, top_k=top_k)
-        bm = self.retrieve_bm25(query, top_k=max(top_k, 10))  # get a bit more for better merge
+        vec = self.retrieve(query, top_k=top_k, languages=languages, versions=versions)
+        bm = self.retrieve_bm25(query, top_k=max(top_k, 10), languages=languages, versions=versions)  # get a bit more for better merge
 
         v_docs: List[str] = vec.get("documents", [])
         v_metas: List[Dict[str, Any]] = vec.get("metadatas", [])
@@ -516,6 +581,8 @@ class RagEngine:
         rewrite_enable: bool = False,
         rewrite_n: int = 2,
         provider: Optional[str] = None,
+        languages: Optional[List[str]] = None,
+        versions: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         method = (method or "vector").lower()
         queries: List[str] = [question]
@@ -531,11 +598,11 @@ class RagEngine:
         per_query: List[Tuple[List[str], List[Dict[str, Any]]]] = []
         for q in queries:
             if method == "bm25":
-                r = self.retrieve_bm25(q, top_k=top_k)
+                r = self.retrieve_bm25(q, top_k=top_k, languages=languages, versions=versions)
             elif method == "hybrid":
-                r = self.retrieve_hybrid(q, top_k=top_k, bm25_weight=bm25_weight, rrf_enable=rrf_enable, rrf_k=rrf_k)
+                r = self.retrieve_hybrid(q, top_k=top_k, bm25_weight=bm25_weight, rrf_enable=rrf_enable, rrf_k=rrf_k, languages=languages, versions=versions)
             else:
-                r = self.retrieve(q, top_k=top_k)
+                r = self.retrieve(q, top_k=top_k, languages=languages, versions=versions)
             per_query.append((r.get("documents", []), r.get("metadatas", [])))
         # RRF fuse across rewrites
         if len(per_query) == 1:
@@ -557,7 +624,7 @@ class RagEngine:
         out_metas = [m for _, _, m in combined[:top_k]]
         return {"documents": out_docs, "metadatas": out_metas}
 
-    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10, provider: Optional[str] = None, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None, rewrite_enable: bool = False, rewrite_n: int = 2) -> Dict[str, Any]:
+    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10, provider: Optional[str] = None, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None, rewrite_enable: bool = False, rewrite_n: int = 2, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
         method = (method or "vector").lower()
         base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
         retrieved = self.retrieve_aggregate(
@@ -570,6 +637,8 @@ class RagEngine:
             rewrite_enable=rewrite_enable,
             rewrite_n=rewrite_n,
             provider=provider,
+            languages=languages,
+            versions=versions,
         )
         docs = retrieved.get("documents", [])
         metas = retrieved.get("metadatas", [])
@@ -637,6 +706,8 @@ class RagEngine:
         rrf_k: Optional[int] = None,
         fanout_first_hop: Optional[int] = None,
         budget_ms: Optional[int] = None,
+        languages: Optional[List[str]] = None,
+        versions: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         depth = max(1, min(int(depth or 1), 3))
         fanout = max(1, min(int(fanout or 1), 3))
@@ -680,11 +751,11 @@ class RagEngine:
                     break
                 base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
                 if method == "bm25":
-                    retrieved = self.retrieve_bm25(sq, top_k=base_k)
+                    retrieved = self.retrieve_bm25(sq, top_k=base_k, languages=languages, versions=versions)
                 elif method == "hybrid":
-                    retrieved = self.retrieve_hybrid(sq, top_k=base_k, bm25_weight=bm25_weight, rrf_enable=rrf_enable, rrf_k=rrf_k)
+                    retrieved = self.retrieve_hybrid(sq, top_k=base_k, bm25_weight=bm25_weight, rrf_enable=rrf_enable, rrf_k=rrf_k, languages=languages, versions=versions)
                 else:
-                    retrieved = self.retrieve(sq, top_k=base_k)
+                    retrieved = self.retrieve(sq, top_k=base_k, languages=languages, versions=versions)
                 docs = retrieved.get("documents", [])
                 metas = retrieved.get("metadatas", [])
                 for d, m in zip(docs, metas):
@@ -699,11 +770,11 @@ class RagEngine:
         if not agg_docs:
             base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
             if method == "bm25":
-                retrieved = self.retrieve_bm25(question, top_k=base_k)
+                retrieved = self.retrieve_bm25(question, top_k=base_k, languages=languages, versions=versions)
             elif method == "hybrid":
-                retrieved = self.retrieve_hybrid(question, top_k=base_k, bm25_weight=bm25_weight)
+                retrieved = self.retrieve_hybrid(question, top_k=base_k, bm25_weight=bm25_weight, languages=languages, versions=versions)
             else:
-                retrieved = self.retrieve(question, top_k=base_k)
+                retrieved = self.retrieve(question, top_k=base_k, languages=languages, versions=versions)
             agg_docs = retrieved.get("documents", [])
             agg_metas = retrieved.get("metadatas", [])
 
@@ -729,3 +800,32 @@ class RagEngine:
             "budget_ms": budget_ms,
             "subquestions": subquestions_all,
         }
+
+    # ===== Filters =====
+    def get_filters(self) -> Dict[str, List[str]]:
+        # cache key by collection (db)
+        cache_key = f"{self.persist_dir}:{self.collection_name}"
+        if cache_key in self._filters_cache:
+            langs = self._filters_cache.get(cache_key + ":langs", [])
+            vers = self._filters_cache.get(cache_key + ":vers", [])
+            return {"languages": langs, "versions": vers}
+        try:
+            results = self.collection.get(include=["metadatas"])  # type: ignore[arg-type]
+        except Exception:
+            results = self.collection.get()
+        metas: List[Dict[str, Any]] = results.get("metadatas", [])  # type: ignore[assignment]
+        langs_set = set()
+        vers_set = set()
+        for m in metas:
+            v = m.get("version")
+            if isinstance(v, str) and v.strip():
+                vers_set.add(v.strip())
+            l = m.get("language")
+            if isinstance(l, str) and l.strip():
+                langs_set.add(l.strip())
+        langs = sorted(langs_set)
+        vers = sorted(vers_set)
+        # store cache entries
+        self._filters_cache[cache_key + ":langs"] = langs
+        self._filters_cache[cache_key + ":vers"] = vers
+        return {"languages": langs, "versions": vers}

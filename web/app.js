@@ -43,6 +43,11 @@ const hopDepth = document.getElementById('hop-depth');
 const hopFanout = document.getElementById('hop-fanout');
 const hopFanout1 = document.getElementById('hop-fanout1');
 const hopBudget = document.getElementById('hop-budget');
+const ingestVersion = document.getElementById('ingest-version');
+const ingestPaths = document.getElementById('ingest-paths');
+const ingestPathsBtn = document.getElementById('btn-ingest-paths');
+const filterLangsSel = document.getElementById('filter-langs');
+const filterVersSel = document.getElementById('filter-versions');
 
 async function loadProvider() {
   try {
@@ -53,6 +58,43 @@ async function loadProvider() {
       if (providerName) providerName.textContent = data.provider;
     }
   } catch {}
+}
+
+async function loadFilters() {
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect && dbSelect.value) params.set('db', dbSelect.value);
+    const resp = await fetch('/api/filters?' + params.toString());
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không tải được filters');
+    const langs = data.languages || [];
+    const vers = data.versions || [];
+    if (filterLangsSel) {
+      filterLangsSel.innerHTML = '';
+      langs.forEach(l => {
+        const opt = document.createElement('option');
+        opt.value = l;
+        opt.textContent = l;
+        filterLangsSel.appendChild(opt);
+      });
+    }
+    if (filterVersSel) {
+      filterVersSel.innerHTML = '';
+      vers.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        filterVersSel.appendChild(opt);
+      });
+    }
+  } catch (e) {
+    console.error('loadFilters error', e);
+  }
+}
+
+function getSelectedValues(selectEl) {
+  if (!selectEl) return [];
+  return Array.from(selectEl.selectedOptions || []).map(o => o.value).filter(Boolean);
 }
 
 async function setProvider(name) {
@@ -342,14 +384,45 @@ function renderCitations(answerText, metas) {
 async function ingest() {
   resultDiv.textContent = 'Đang index tài liệu...';
   try {
+    const payload = { paths: ['data/docs'], db: dbSelect.value || null };
+    if (ingestVersion && ingestVersion.value.trim()) payload.version = ingestVersion.value.trim();
     const resp = await fetch('/api/ingest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paths: ['data/docs'], db: dbSelect.value || null })
+      body: JSON.stringify(payload)
     });
     const data = await resp.json();
     if (resp.ok) {
       resultDiv.textContent = `Đã index ${data.chunks_indexed} chunks.`;
+      await loadFilters();
+    } else {
+      resultDiv.textContent = `Lỗi ingest: ${data.detail}`;
+    }
+  } catch (e) {
+    resultDiv.textContent = `Lỗi kết nối server: ${e}`;
+  }
+}
+
+async function ingestByPaths() {
+  const raw = (ingestPaths && ingestPaths.value || '').trim();
+  if (!raw) {
+    alert('Nhập Paths (có thể là glob, phân tách bằng dấu ,)');
+    return;
+  }
+  resultDiv.textContent = 'Đang index tài liệu (custom paths)...';
+  try {
+    const list = raw.split(',').map(s => s.trim()).filter(Boolean);
+    const payload = { paths: list, db: dbSelect.value || null };
+    if (ingestVersion && ingestVersion.value.trim()) payload.version = ingestVersion.value.trim();
+    const resp = await fetch('/api/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      resultDiv.textContent = `Đã index ${data.chunks_indexed} chunks.`;
+      await loadFilters();
     } else {
       resultDiv.textContent = `Lỗi ingest: ${data.detail}`;
     }
@@ -379,18 +452,20 @@ async function ask() {
     const chat_id = chatSelect.value || null;
     const save_chat = !!saveChatCk.checked;
     const provider = providerSel ? providerSel.value : undefined;
+    const languages = getSelectedValues(filterLangsSel);
+    const versions = getSelectedValues(filterVersSel);
     if (streaming) {
       if (multihopCk.checked) {
-        await askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat);
+        await askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat, { languages, versions });
       } else {
-        await askStreaming(q, k, method, bm25_weight, chat_id, save_chat, { rewrite_enable, rewrite_n });
+        await askStreaming(q, k, method, bm25_weight, chat_id, save_chat, { rewrite_enable, rewrite_n, languages, versions });
       }
     } else {
       if (multihopCk.checked) {
         const resp = await fetch('/api/multihop_query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), fanout_first_hop: parseInt(hopFanout1.value||'1',10), budget_ms: parseInt(hopBudget.value||'0',10), provider, chat_id, save_chat, db: dbSelect.value || null, rewrite_enable, rewrite_n })
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth: parseInt(hopDepth.value||'2',10), fanout: parseInt(hopFanout.value||'2',10), fanout_first_hop: parseInt(hopFanout1.value||'1',10), budget_ms: parseInt(hopBudget.value||'0',10), provider, chat_id, save_chat, db: dbSelect.value || null, rewrite_enable, rewrite_n, languages, versions })
         });
         const data = await resp.json();
         if (resp.ok) {
@@ -409,7 +484,7 @@ async function ask() {
         const resp = await fetch('/api/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null, rewrite_enable, rewrite_n })
+          body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null, rewrite_enable, rewrite_n, languages, versions })
         });
         const data = await resp.json();
         if (resp.ok) {
@@ -436,9 +511,13 @@ async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat, opt) 
   const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
   const provider = providerSel ? providerSel.value : undefined;
   const payload = { query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null };
-  if (opt && typeof opt.rewrite_enable !== 'undefined') {
-    payload.rewrite_enable = !!opt.rewrite_enable;
-    payload.rewrite_n = parseInt(opt.rewrite_n || 2, 10);
+  if (opt) {
+    if (typeof opt.rewrite_enable !== 'undefined') {
+      payload.rewrite_enable = !!opt.rewrite_enable;
+      payload.rewrite_n = parseInt(opt.rewrite_n || 2, 10);
+    }
+    if (Array.isArray(opt.languages)) payload.languages = opt.languages;
+    if (Array.isArray(opt.versions)) payload.versions = opt.versions;
   }
   const resp = await fetch('/api/stream_query', {
     method: 'POST',
@@ -492,16 +571,21 @@ async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat, opt) 
   renderCitations(answer, lastMetas);
 }
 
-async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat) {
+async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat, opt) {
   const rerank_enable = !!rerankCk.checked;
   const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
   const depth = parseInt(hopDepth.value || '2', 10);
   const fanout = parseInt(hopFanout.value || '2', 10);
   const provider = providerSel ? providerSel.value : undefined;
+  const payload = { query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth, fanout, provider, chat_id, save_chat, db: dbSelect.value || null };
+  if (opt) {
+    if (Array.isArray(opt.languages)) payload.languages = opt.languages;
+    if (Array.isArray(opt.versions)) payload.versions = opt.versions;
+  }
   const resp = await fetch('/api/stream_multihop_query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth, fanout, provider, chat_id, save_chat, db: dbSelect.value || null })
+    body: JSON.stringify(payload)
   });
   if (!resp.ok || !resp.body) {
     resultDiv.textContent = `Streaming thất bại: ${resp.status}`;
@@ -563,6 +647,7 @@ dbSelect.addEventListener('change', async () => {
   const name = dbSelect.value;
   if (name) await useDb(name);
   await loadChats();
+  await loadFilters();
 });
 
 dbCreateBtn.addEventListener('click', async () => { await createDb(); await loadChats(); });
@@ -576,9 +661,10 @@ chatExportMdBtn.addEventListener('click', () => exportChat('md'));
 chatExportDbJsonBtn.addEventListener('click', () => exportDb('json'));
 chatExportDbMdBtn.addEventListener('click', () => exportDb('md'));
 chatSearchBtn.addEventListener('click', searchChats);
+if (ingestPathsBtn) ingestPathsBtn.addEventListener('click', ingestByPaths);
 
 // init
-loadProvider().then(() => loadDbs().then(loadChats));
+loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); }));
 
 methodSel.addEventListener('change', () => {
   const m = methodSel.value;
