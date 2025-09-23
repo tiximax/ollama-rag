@@ -750,7 +750,7 @@ def api_logs_clear(db: Optional[str] = None):
 
 # ===== Citations Export APIs =====
 @app.get("/api/citations/chat/{chat_id}")
-def api_citations_chat(chat_id: str, format: str = "json", db: Optional[str] = None):
+def api_citations_chat(chat_id: str, format: str = "json", db: Optional[str] = None, sources: Optional[str] = None, versions: Optional[str] = None, languages: Optional[str] = None):
     try:
         if db:
             engine.use_db(db)
@@ -791,6 +791,26 @@ def api_citations_chat(chat_id: str, format: str = "json", db: Optional[str] = N
                     'question': last_user,
                     'ts': m.get('ts'),
                 })
+        # apply filters
+        def parse_csv(s: Optional[str]):
+            if not s: return []
+            return [x.strip() for x in s.split(',') if x.strip()]
+        src_filters = parse_csv(sources)
+        ver_filters = parse_csv(versions)
+        lang_filters = parse_csv(languages)
+        def keep(c):
+            if src_filters:
+                src = str(c.get('source') or '')
+                if not any(f in src for f in src_filters):
+                    return False
+            if ver_filters:
+                if str(c.get('version') or '') not in ver_filters:
+                    return False
+            if lang_filters:
+                if str(c.get('language') or '') not in lang_filters:
+                    return False
+            return True
+        citations = [c for c in citations if keep(c)]
         fmt = (format or 'json').lower()
         if fmt == 'csv':
             import io, csv
@@ -814,7 +834,7 @@ def api_citations_chat(chat_id: str, format: str = "json", db: Optional[str] = N
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/citations/db")
-def api_citations_db(format: str = 'json', db: Optional[str] = None):
+def api_citations_db(format: str = 'json', db: Optional[str] = None, sources: Optional[str] = None, versions: Optional[str] = None, languages: Optional[str] = None):
     try:
         if db:
             engine.use_db(db)
@@ -826,7 +846,7 @@ def api_citations_db(format: str = 'json', db: Optional[str] = None):
                 cid = ch.get('id')
                 if not cid:
                     continue
-                content_resp = api_citations_chat(cid, format=format, db=engine.db_name)  # type: ignore[arg-type]
+                content_resp = api_citations_chat(cid, format=format, db=engine.db_name, sources=sources, versions=versions, languages=languages)  # type: ignore[arg-type]
                 # content_resp có thể là Response (csv/md) hoặc list json
                 fname_base = ch.get('name') or cid
                 if format.lower() == 'csv':

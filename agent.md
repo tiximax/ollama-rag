@@ -154,9 +154,10 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - Tests: thêm tests/e2e/analytics.spec.js (API) và tests/e2e/analytics_ui.spec.js (UI). PASS.
 - 2025-09-23: B10b — Citations export nâng cao:
   - API: /api/citations/chat/{chat_id}?format=json|csv|md và /api/citations/db?format=... (ZIP per-chat).
+  - Hỗ trợ lọc citations theo sources (substring), versions, languages (CSV query params).
   - Lưu contexts vào meta khi lưu chat (non-stream + stream) để xuất excerpt ổn định.
-  - UI: nút Export Citations (Chat/DB) trong thanh Chat.
-  - Tests: thêm tests/e2e/citations_export.spec.js (PASS).
+  - UI: nút Export Citations (Chat/DB) + các ô filter (src/ver/lang) trong thanh Chat.
+  - Tests: thêm tests/e2e/citations_export.spec.js và citations_export_filter.spec.js (PASS).
 
 ## Kế hoạch R&D (Học thuật)
 Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.
