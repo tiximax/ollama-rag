@@ -163,6 +163,8 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - UI: thanh Ingest có mục Upload: input multiple + nút "Upload & Ingest"; sau khi xong, refresh Filters (languages/versions).
   - Fix deps: cài python-multipart vào virtualenv .venv (trước đó chỉ cài global → server báo thiếu khi khởi chạy từ .venv).
   - Tests: sửa tests/e2e/upload_ingest.spec.js (xóa TypeScript 'as any', đặt setInputFiles theo mảng, assert filesCount>0; chờ response POST /api/upload và xác thực data.saved.length>0; sau đó hỏi stream BM25 và kiểm tra contexts hiển thị). PASS.
+  - Tag: v0.15.0-b15
+  - Release: https://github.com/tiximax/ollama-rag/releases/tag/v0.15.0-b15
 
 ## Kế hoạch R&D (Học thuật)
 Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.
