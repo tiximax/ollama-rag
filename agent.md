@@ -129,6 +129,10 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - API: mở rộng body cho /api/query, /api/stream_query, /api/multihop_query, /api/stream_multihop_query; thêm /api/filters trả về danh sách distinct language/version theo DB.
   - UI: thêm Ingest Version, Ingest Paths (tùy chọn), bộ lọc Language/Version (multi-select) trong panel truy vấn.
   - Tests: thêm tests/e2e/filters.spec.js (BM25 + streaming) để kiểm tra lọc theo ngôn ngữ và phiên bản. 
+- 2025-09-23: B7 — Offline evaluation:
+  - API: thêm /api/eval/offline nhận dataset JSON (queries[], k, method, filters); tính recall@k dựa trên expected_sources/expected_substrings.
+  - UI: panel "Offline Evaluation" với textarea nhập JSON và nút Run Eval, hiển thị Recall@k (hits/N).
+  - Tests: thêm tests/e2e/eval_offline.spec.js (BM25 + versions) đảm bảo Recall@k=1.0 trên bộ mẫu en1/vi1.
 
 ## Kế hoạch R&D (Học thuật)
 Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.

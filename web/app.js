@@ -48,6 +48,9 @@ const ingestPaths = document.getElementById('ingest-paths');
 const ingestPathsBtn = document.getElementById('btn-ingest-paths');
 const filterLangsSel = document.getElementById('filter-langs');
 const filterVersSel = document.getElementById('filter-versions');
+const evalJson = document.getElementById('eval-json');
+const evalRunBtn = document.getElementById('btn-eval-run');
+const evalResultDiv = document.getElementById('eval-result');
 
 async function loadProvider() {
   try {
@@ -277,6 +280,41 @@ async function deleteAllChats() {
     alert(`Đã xóa ${data.deleted} chats.`);
   } catch (e) {
     alert('Lỗi xóa tất cả: ' + e);
+  }
+}
+
+async function runEval() {
+  try {
+    const raw = (evalJson && evalJson.value || '').trim();
+    if (!raw) {
+      evalResultDiv.textContent = 'Nhập JSON dataset trước.';
+      return;
+    }
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      evalResultDiv.textContent = 'JSON không hợp lệ: ' + e;
+      return;
+    }
+    if (!data) { evalResultDiv.textContent = 'Dataset trống'; return; }
+    if (!data.db && dbSelect && dbSelect.value) data.db = dbSelect.value;
+    const resp = await fetch('/api/eval/offline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const out = await resp.json();
+    if (!resp.ok) {
+      evalResultDiv.textContent = 'Eval lỗi: ' + (out.detail || resp.status);
+      return;
+    }
+    const n = out.n || 0;
+    const hits = out.hits || 0;
+    const recall = typeof out.recall_at_k === 'number' ? out.recall_at_k.toFixed(2) : out.recall_at_k;
+    evalResultDiv.textContent = `Recall@k: ${recall} (${hits}/${n})`;
+  } catch (e) {
+    evalResultDiv.textContent = 'Eval lỗi: ' + e;
   }
 }
 
@@ -662,6 +700,7 @@ chatExportDbJsonBtn.addEventListener('click', () => exportDb('json'));
 chatExportDbMdBtn.addEventListener('click', () => exportDb('md'));
 chatSearchBtn.addEventListener('click', searchChats);
 if (ingestPathsBtn) ingestPathsBtn.addEventListener('click', ingestByPaths);
+if (evalRunBtn) evalRunBtn.addEventListener('click', runEval);
 
 // init
 loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); }));

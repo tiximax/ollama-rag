@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import os
 import json
 
@@ -426,6 +426,104 @@ def api_get_filters(db: Optional[str] = None):
         if db:
             engine.use_db(db)
         return engine.get_filters()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Offline Evaluation API =====
+class EvalQueryItem(BaseModel):
+    query: str
+    expected_sources: Optional[List[str]] = None  # match by substring in metadata.source
+    expected_substrings: Optional[List[str]] = None  # match by substring in retrieved docs
+    languages: Optional[List[str]] = None
+    versions: Optional[List[str]] = None
+
+class EvalRequest(BaseModel):
+    queries: List[EvalQueryItem]
+    k: int = 5
+    method: str = "bm25"
+    bm25_weight: float = 0.5
+    rerank_enable: bool = False
+    rerank_top_n: int = 10
+    rrf_enable: bool | None = None
+    rrf_k: int | None = None
+    rewrite_enable: bool = False
+    rewrite_n: int = 2
+    provider: Optional[str] = None
+    db: Optional[str] = None
+    # defaults for all items if not provided per-item
+    languages: Optional[List[str]] = None
+    versions: Optional[List[str]] = None
+
+@app.post("/api/eval/offline")
+def api_eval_offline(req: EvalRequest):
+    try:
+        if req.db:
+            engine.use_db(req.db)
+        total = len(req.queries or [])
+        hits = 0
+        details: List[Dict[str, Any]] = []
+        for item in req.queries:
+            langs = item.languages if item.languages is not None else req.languages
+            vers = item.versions if item.versions is not None else req.versions
+            base_k = max(req.k, req.rerank_top_n if req.rerank_enable else req.k)
+            retrieved = engine.retrieve_aggregate(
+                item.query,
+                top_k=base_k,
+                method=req.method,
+                bm25_weight=req.bm25_weight,
+                rrf_enable=req.rrf_enable,
+                rrf_k=req.rrf_k,
+                rewrite_enable=req.rewrite_enable,
+                rewrite_n=req.rewrite_n,
+                provider=req.provider,
+                languages=langs,
+                versions=vers,
+            )
+            docs = retrieved.get("documents", [])
+            metas = retrieved.get("metadatas", [])
+            if req.rerank_enable and docs:
+                docs, metas = engine._apply_rerank(item.query, docs, metas, req.k)  # type: ignore[attr-defined]
+            else:
+                docs = docs[:req.k]
+                metas = metas[:req.k]
+            # Prepare for matching
+            srcs: List[str] = []
+            for m in metas:
+                try:
+                    s = str(m.get("source", ""))
+                except Exception:
+                    s = ""
+                srcs.append(s)
+            matched_srcs: List[str] = []
+            matched_subs: List[str] = []
+            # Match sources by substring anywhere in path
+            if item.expected_sources:
+                for exp in item.expected_sources:
+                    exp = (exp or "").strip()
+                    if not exp:
+                        continue
+                    if any(exp in s for s in srcs):
+                        matched_srcs.append(exp)
+            # Match expected substrings in any retrieved doc
+            if item.expected_substrings:
+                for exp in item.expected_substrings:
+                    exp = (exp or "").strip()
+                    if not exp:
+                        continue
+                    if any(exp.lower() in (d or "").lower() for d in docs):
+                        matched_subs.append(exp)
+            matched = bool(matched_srcs or matched_subs)
+            if matched:
+                hits += 1
+            details.append({
+                "query": item.query,
+                "matched": matched,
+                "matched_sources": matched_srcs,
+                "matched_substrings": matched_subs,
+                "retrieved_sources": srcs,
+            })
+        recall = (hits / total) if total > 0 else 0.0
+        return {"db": engine.db_name, "n": total, "hits": hits, "recall_at_k": recall, "details": details}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

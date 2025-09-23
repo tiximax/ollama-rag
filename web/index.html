@@ -47,6 +47,15 @@
           <button id="btn-ingest-paths">Ingest Paths</button>
         </div>
       </div>
+      <div class="eval-panel" style="margin: 8px 0; padding: 8px; border: 1px solid #ddd;">
+        <h3>Offline Evaluation</h3>
+        <p>Nhập JSON dataset (ví dụ): {"k":3,"method":"bm25","queries":[{"query":"...","expected_substrings":["..."]}]}</p>
+        <textarea id="eval-json" rows="6" style="width:100%; font-family: monospace;"></textarea>
+        <div style="margin-top:6px;">
+          <button id="btn-eval-run">Run Eval</button>
+        </div>
+        <div id="eval-result" class="result" style="margin-top:6px;"></div>
+      </div>
       <div class="query">
         <input id="txt-query" type="text" placeholder="Nhập câu hỏi..." />
         <label class="opt">k:
