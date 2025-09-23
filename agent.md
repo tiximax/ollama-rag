@@ -152,12 +152,17 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
   - Thuật toán: đọc chats JSON theo DB, đếm cặp Q/A (assistant), trích metadata từ metas (nguồn, version, language), tính trung bình và median độ dài câu trả lời.
   - UI: thêm panel Analytics (Refresh, số liệu chính và Top lists).
   - Tests: thêm tests/e2e/analytics.spec.js (API) và tests/e2e/analytics_ui.spec.js (UI). PASS.
-- 2025-09-23: B10b — Citations export nâng cao:
+|- 2025-09-23: B10b — Citations export nâng cao:
   - API: /api/citations/chat/{chat_id}?format=json|csv|md và /api/citations/db?format=... (ZIP per-chat).
   - Hỗ trợ lọc citations theo sources (substring), versions, languages (CSV query params).
   - Lưu contexts vào meta khi lưu chat (non-stream + stream) để xuất excerpt ổn định.
   - UI: nút Export Citations (Chat/DB) + các ô filter (src/ver/lang) trong thanh Chat.
   - Tests: thêm tests/e2e/citations_export.spec.js và citations_export_filter.spec.js (PASS).
+- 2025-09-23: B15 — Upload & Ingest (tài liệu người dùng):
+  - Backend: thêm /api/upload (multipart/form-data) nhận nhiều file (.txt/.pdf/.docx), lưu vào data/docs/uploads và gọi ingest_paths; trả về {saved[], chunks_indexed}.
+  - UI: thanh Ingest có mục Upload: input multiple + nút "Upload & Ingest"; sau khi xong, refresh Filters (languages/versions).
+  - Fix deps: cài python-multipart vào virtualenv .venv (trước đó chỉ cài global → server báo thiếu khi khởi chạy từ .venv).
+  - Tests: sửa tests/e2e/upload_ingest.spec.js (xóa TypeScript 'as any', đặt setInputFiles theo mảng, assert filesCount>0; chờ response POST /api/upload và xác thực data.saved.length>0; sau đó hỏi stream BM25 và kiểm tra contexts hiển thị). PASS.
 
 ## Kế hoạch R&D (Học thuật)
 Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), trích dẫn đa tài liệu, hỗ trợ đa ngôn ngữ và phiên bản hóa.

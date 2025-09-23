@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
 import json
+import uuid
 
 from .rag_engine import RagEngine
 from .chat_store import ChatStore
@@ -43,6 +44,32 @@ def api_ingest(req: IngestRequest):
             engine.use_db(req.db)
         count = engine.ingest_paths(req.paths, version=req.version)
         return {"status": "ok", "chunks_indexed": count, "db": engine.db_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Upload & Ingest =====
+@app.post("/api/upload")
+async def api_upload(files: List[UploadFile] = File(...), db: Optional[str] = Form(None), version: Optional[str] = Form(None)):
+    try:
+        if db:
+            engine.use_db(db)
+        save_dir = os.path.join("data", "docs", "uploads")
+        os.makedirs(save_dir, exist_ok=True)
+        saved_paths: List[str] = []
+        allowed = {".txt", ".pdf", ".docx"}
+        for f in files:
+            name = f.filename or ""
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in allowed:
+                continue
+            data = await f.read()
+            new_name = f"{uuid.uuid4().hex}{ext}"
+            path = os.path.join(save_dir, new_name)
+            with open(path, "wb") as out:
+                out.write(data)
+            saved_paths.append(path)
+        count = engine.ingest_paths(saved_paths, version=version) if saved_paths else 0
+        return {"status": "ok", "saved": [os.path.basename(p) for p in saved_paths], "chunks_indexed": count, "db": engine.db_name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

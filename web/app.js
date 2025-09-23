@@ -56,6 +56,8 @@ const hopBudget = document.getElementById('hop-budget');
 const ingestVersion = document.getElementById('ingest-version');
 const ingestPaths = document.getElementById('ingest-paths');
 const ingestPathsBtn = document.getElementById('btn-ingest-paths');
+const fileUploadInput = document.getElementById('file-upload');
+const uploadBtn = document.getElementById('btn-upload');
 const filterLangsSel = document.getElementById('filter-langs');
 const filterVersSel = document.getElementById('filter-versions');
 const evalJson = document.getElementById('eval-json');
@@ -479,6 +481,24 @@ function downloadBlob(name, blob) {
   URL.revokeObjectURL(url);
 }
 
+async function uploadAndIngest() {
+  try {
+    const files = fileUploadInput && fileUploadInput.files ? Array.from(fileUploadInput.files) : [];
+    if (!files.length) { alert('Chọn file để upload'); return; }
+    const fd = new FormData();
+    files.forEach(f => fd.append('files', f));
+    if (dbSelect.value) fd.append('db', dbSelect.value);
+    if (ingestVersion && ingestVersion.value.trim()) fd.append('version', ingestVersion.value.trim());
+    const resp = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || resp.status);
+    resultDiv.textContent = `Đã upload ${data.saved.length} file, index ${data.chunks_indexed} chunks.`;
+    await loadFilters();
+  } catch (e) {
+    alert('Lỗi upload: ' + e);
+  }
+}
+
 async function exportChat(format) {
   const id = chatSelect.value;
   if (!id) { alert('Chưa chọn chat'); return; }
@@ -899,6 +919,7 @@ chatExportDbJsonBtn.addEventListener('click', () => exportDb('json'));
 chatExportDbMdBtn.addEventListener('click', () => exportDb('md'));
 chatSearchBtn.addEventListener('click', searchChats);
 if (ingestPathsBtn) ingestPathsBtn.addEventListener('click', ingestByPaths);
+if (uploadBtn) uploadBtn.addEventListener('click', uploadAndIngest);
 if (evalRunBtn) evalRunBtn.addEventListener('click', runEval);
 if (fbUpBtn) fbUpBtn.addEventListener('click', () => { gFbScore = 1; });
 if (fbDownBtn) fbDownBtn.addEventListener('click', () => { gFbScore = -1; });
