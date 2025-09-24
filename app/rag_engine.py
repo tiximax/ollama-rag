@@ -46,6 +46,9 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
 RRF_ENABLE_DEFAULT = os.getenv("RRF_ENABLE", "1").strip() not in ("0", "false", "False")
 RRF_K_DEFAULT = int(os.getenv("RRF_K", "60"))
 
+# Dedup config
+DEDUP_ENABLE = os.getenv("DEDUP_ENABLE", "1").strip() not in ("0", "false", "False")
+
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
     text = text.replace("\r\n", "\n")
@@ -211,16 +214,37 @@ class RagEngine:
         except Exception:
             return None
 
+    def _load_existing_hashes(self) -> set:
+        existing: set = set()
+        try:
+            results = self.collection.get(include=["metadatas"])  # type: ignore[arg-type]
+            metas: List[Dict[str, Any]] = results.get("metadatas", [])  # type: ignore[assignment]
+            for m in metas:
+                h = (m or {}).get("hash")
+                if isinstance(h, str) and h:
+                    existing.add(h)
+        except Exception:
+            pass
+        return existing
+
     def ingest_texts(self, texts: List[str], metadatas: List[Dict[str, Any]] | None = None, version: Optional[str] = None) -> int:
         ids: IDs = []
         docs: Documents = []
         mds: Metadatas = []
+
+        existing_hashes: set = self._load_existing_hashes() if DEDUP_ENABLE else set()
+        added = 0
 
         for i, t in enumerate(texts):
             # Version cho cả tài liệu này (áp cho tất cả chunks)
             ver = (version or (hashlib.md5(t.encode("utf-8")).hexdigest()[:8]))
             src_val = metadatas[i].get("source") if metadatas else f"text_{i}"
             for j, chunk in enumerate(chunk_text(t)):
+                # Hash theo (source + nội dung chunk) để tránh index lặp lại
+                h_input = (src_val + "\n" + chunk).encode("utf-8", errors="ignore")
+                hval = hashlib.sha1(h_input).hexdigest()
+                if DEDUP_ENABLE and hval in existing_hashes:
+                    continue
                 ids.append(str(uuid.uuid4()))
                 docs.append(chunk)
                 lang = self._detect_lang(chunk) or "unknown"
@@ -229,14 +253,19 @@ class RagEngine:
                     "chunk": j,
                     "version": ver,
                     "language": lang,
+                    "hash": hval,
                 }
                 mds.append(meta)
-        self.collection.add(ids=ids, documents=docs, metadatas=mds)
+                if DEDUP_ENABLE:
+                    existing_hashes.add(hval)
+                added += 1
+        if docs:
+            self.collection.add(ids=ids, documents=docs, metadatas=mds)
         # invalidate bm25 to rebuild on next query
         self._bm25 = None
         # clear filters cache
         self._filters_cache.clear()
-        return len(docs)
+        return added
 
     def ingest_paths(self, paths: List[str], version: Optional[str] = None) -> int:
         import glob
