@@ -1,0 +1,25 @@
+# Exclude heavy or generated directories from Warp's codebase indexing
+# Keep app/, web/, tests/, scripts/, deploy/ included for agent context
+
+# Python / Node / build artifacts
+.venv/
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/
+
+# Runtime and data
+.data/
+logs/
+
+# Knowledge base and uploads (can be very large)
+data/kb/
+data/docs/uploads/
+
+# Playwright artifacts
+playwright-report/
+playwright/.cache/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db

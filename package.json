@@ -8,6 +8,7 @@
     "test:e2e:light": "playwright test --grep-invert @heavy",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
+    "test:e2e:ci:light": "playwright test --config=playwright.ci.config.js --grep-invert @heavy",
     "smoke:tunnel:native": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\smoke\\cloudflared_smoke.ps1",
     "smoke:tunnel:docker": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\smoke\\docker_tunnel_smoke.ps1",
     "playwright:install": "playwright install",
