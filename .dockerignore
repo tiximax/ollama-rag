@@ -1,0 +1,27 @@
+# reduce docker build context
+.git/
+.vscode/
+.idea/
+node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
+bench-results/
+
+# data and runtime
+.data/
+logs/
+data/kb/
+data/docs/uploads/
+data/chroma/
+
+# tests and local artifacts
+playwright-report/
+playwright/.cache/
+bench-results/
+server_out.txt
+server_err.txt
+
+# OS noise
+.DS_Store
+Thumbs.db

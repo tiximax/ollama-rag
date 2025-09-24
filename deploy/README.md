@@ -42,6 +42,15 @@ A) Docker Compose
 
 B) cloudflared native trên Windows
 
+Healthcheck và non-root user
+- Dockerfile chạy dưới user không phải root (appuser) để tăng an toàn.
+- docker-compose có healthcheck cho rag2app: kiểm tra HTTP 127.0.0.1:8000 trong container bằng Python stdlib.
+
+Smoke test Docker (không cần Tunnel)
+- PowerShell: scripts/smoke/app_smoke.ps1
+  - Build image từ deploy/docker/Dockerfile
+  - Chạy container, đợi / trả 200, rồi dọn container
+
 Smoke test (Windows)
 - Native:
   - npm run smoke:tunnel:native
