@@ -53,6 +53,23 @@ Chạy Playwright e2e
 - Chạy full (gồm Multi-hop, Reranker):
     npm run test:e2e
 
+## Benchmark Notes
+
+- Chạy benchmark matrix nội bộ với rounds=3 để làm mượt kết quả.
+- Ma trận mặc định: bm25 non-stream, bm25 stream, hybrid non-stream, hybrid stream.
+- Đo thời gian:
+  - Non-stream: tổng latency của /api/query
+  - Stream: t_ctx (thời gian tới header [[CTXJSON]]), t_ans (tổng thời gian stream)
+- Cách chạy:
+  - python scripts/bench/bench_matrix.py --rounds 3
+  - Kết quả CSV: bench-results/bench-matrix-YYYYMMDD-HHMMSS.csv
+
+Ví dụ kết quả (rounds=3 trên máy local, tinyllama):
+- bm25 non-stream (latency s): ~1.07 median
+- bm25 stream (t_ctx/t_ans s): ~0.016 / ~1.07 median
+- hybrid non-stream (latency s): ~5.19 median
+- hybrid stream (t_ctx/t_ans s): ~3.56 / ~5.13 median
+
 UI — các điều khiển chính
 - Provider: Ollama | OpenAI (generate/stream dùng provider đã chọn; Embeddings luôn dùng Ollama/local)
 - Phương pháp: vector | bm25 | hybrid (+ w BM25)
