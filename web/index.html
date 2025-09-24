@@ -107,13 +107,13 @@
       <div class="query">
         <input id="txt-query" type="text" placeholder="Nhập câu hỏi..." />
         <label class="opt">k:
-          <input id="top-k" type="number" min="1" max="10" value="5" />
+<input id="top-k" type="number" min="1" max="10" value="3" />
         </label>
         <label class="opt">Phương pháp:
           <select id="method">
-            <option value="vector" selected>Vector</option>
+<option value="vector">Vector</option>
             <option value="bm25">BM25</option>
-            <option value="hybrid">Hybrid</option>
+            <option value="hybrid" selected>Hybrid</option>
           </select>
         </label>
         <label class="opt" id="bm25-weight-wrap" style="display:none;">

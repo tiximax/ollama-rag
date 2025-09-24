@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Response, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
@@ -13,6 +13,65 @@ from .feedback_store import FeedbackStore
 from .exp_logger import ExperimentLogger
 
 app = FastAPI(title="Ollama RAG App")
+
+# ===== Security & CORS =====
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import threading
+
+# CORS: allow only configured origins (default: none → same-origin only)
+_allow_origins_env = os.getenv("ALLOW_ORIGINS", "").strip()
+_allow_origins = [o.strip() for o in _allow_origins_env.split(",") if o.strip()] if _allow_origins_env else []
+if _allow_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_allow_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"]
+    )
+
+# Security headers (minimal, configurable HSTS)
+_HSTS_ENABLE = os.getenv("HSTS_ENABLE", "0").strip() not in ("0", "false", "False")
+@app.middleware("http")
+async def security_headers_middleware(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "geolocation=()")
+    if _HSTS_ENABLE:
+        # Only meaningful over HTTPS; enable behind reverse proxy/Cloudflare
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+    return response
+
+# Basic rate limit (fixed window) for heavy POST endpoints
+_RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "0").strip() not in ("0", "false", "False")
+_RATE_LIMIT_WINDOW_SEC = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "60") or 60)
+_RATE_LIMIT_MAX_REQ = int(os.getenv("RATE_LIMIT_MAX_REQ", "60") or 60)
+_LIMIT_PATHS = {p.strip() for p in (os.getenv("RATE_LIMIT_PATHS", "/api/query,/api/stream_query,/api/multihop_query,/api/stream_multihop_query,/api/upload").split(",")) if p.strip()}
+
+_rate_lock = threading.Lock()
+_rate_buckets = {}
+
+@app.middleware("http")
+async def rate_limit_middleware(request, call_next):
+    if not _RATE_LIMIT_ENABLED:
+        return await call_next(request)
+    path = request.url.path
+    if request.method != "POST" or path not in _LIMIT_PATHS:
+        return await call_next(request)
+    ip = (request.client.host if request.client else "?")
+    now = int(__import__("time").time())
+    key = f"{ip}:{path}"
+    with _rate_lock:
+        cnt, start = _rate_buckets.get(key, (0, now))
+        if now - start >= _RATE_LIMIT_WINDOW_SEC:
+            cnt, start = 0, now
+        if cnt + 1 > _RATE_LIMIT_MAX_REQ:
+            return JSONResponse({"detail": "Too Many Requests"}, status_code=429)
+        _rate_buckets[key] = (cnt + 1, start)
+    return await call_next(request)
 
 # Khởi tạo engine với thiết lập Multi-DB (tương thích ngược)
 # Nếu PERSIST_DIR được set (ví dụ data/chroma) sẽ dùng như db mặc định trong root của nó
@@ -47,6 +106,28 @@ def api_ingest(req: IngestRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== Observability (Prometheus) =====
+_OBS_ENABLE = os.getenv("OBSERVABILITY_ENABLE", "0").strip() not in ("0", "false", "False")
+if _OBS_ENABLE:
+    try:
+        from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+        REQ_COUNTER = Counter(
+            "rag_requests_total", "Total RAG requests", ["route", "method", "provider", "retr_method"],
+        )
+        LAT_MS = Histogram(
+            "rag_latency_ms", "RAG request latency (ms)", ["route", "provider", "retr_method"],
+            buckets=(100,250,500,1000,2000,4000,8000,16000,32000)
+        )
+        CTX_COUNT = Histogram(
+            "rag_contexts_count", "RAG contexts returned", ["route", "provider", "retr_method"],
+            buckets=(0,1,2,3,5,8,13)
+        )
+        @app.get("/metrics")
+        def metrics():
+            return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    except Exception:
+        _OBS_ENABLE = False
+
 # ===== Upload & Ingest =====
 @app.post("/api/upload")
 async def api_upload(files: List[UploadFile] = File(...), db: Optional[str] = Form(None), version: Optional[str] = Form(None)):
@@ -55,14 +136,27 @@ async def api_upload(files: List[UploadFile] = File(...), db: Optional[str] = Fo
             engine.use_db(db)
         save_dir = os.path.join("data", "docs", "uploads")
         os.makedirs(save_dir, exist_ok=True)
+        # Upload limits
+        MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", "10000000") or 10000000)  # 10 MB
+        MAX_UPLOAD_FILES = int(os.getenv("MAX_UPLOAD_FILES", "5") or 5)
+        MAX_UPLOAD_TOTAL_BYTES = int(os.getenv("MAX_UPLOAD_TOTAL_BYTES", "30000000") or 30000000)  # 30 MB
+        if len(files) > MAX_UPLOAD_FILES:
+            raise HTTPException(status_code=400, detail=f"Too many files (>{MAX_UPLOAD_FILES})")
         saved_paths: List[str] = []
         allowed = {".txt", ".pdf", ".docx"}
+        total_bytes = 0
         for f in files:
             name = f.filename or ""
             ext = os.path.splitext(name)[1].lower()
             if ext not in allowed:
                 continue
             data = await f.read()
+            size = len(data or b"")
+            if size > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=400, detail=f"File too large (> {MAX_UPLOAD_BYTES} bytes)")
+            total_bytes += size
+            if total_bytes > MAX_UPLOAD_TOTAL_BYTES:
+                raise HTTPException(status_code=400, detail=f"Total upload too large (> {MAX_UPLOAD_TOTAL_BYTES} bytes)")
             new_name = f"{uuid.uuid4().hex}{ext}"
             path = os.path.join(save_dir, new_name)
             with open(path, "wb") as out:
@@ -70,14 +164,16 @@ async def api_upload(files: List[UploadFile] = File(...), db: Optional[str] = Fo
             saved_paths.append(path)
         count = engine.ingest_paths(saved_paths, version=version) if saved_paths else 0
         return {"status": "ok", "saved": [os.path.basename(p) for p in saved_paths], "chunks_indexed": count, "db": engine.db_name}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 class QueryRequest(BaseModel):
     query: str
-    k: int = 5
-    method: str = "vector"  # vector | bm25 | hybrid
+    k: int = 3
+    method: str = "hybrid"  # vector | bm25 | hybrid
     bm25_weight: float = 0.5
     rerank_enable: bool = False
     rerank_top_n: int = 10
@@ -99,7 +195,7 @@ class QueryRequest(BaseModel):
 
 class MultiHopQueryRequest(BaseModel):
     query: str
-    k: int = 5
+    k: int = 3
     method: str = "hybrid"
     bm25_weight: float = 0.5
     rerank_enable: bool = False
@@ -164,6 +260,14 @@ def api_query(req: QueryRequest):
         # Log
         try:
             t1 = int(_t.time() * 1000)
+            if _OBS_ENABLE:
+                try:
+                    prov = (req.provider or engine.default_provider)
+                    REQ_COUNTER.labels(route="/api/query", method="POST", provider=prov, retr_method=req.method).inc()
+                    LAT_MS.labels(route="/api/query", provider=prov, retr_method=req.method).observe(t1 - t0)
+                    CTX_COUNT.labels(route="/api/query", provider=prov, retr_method=req.method).observe(len(result.get("metadatas", [])))
+                except Exception:
+                    pass
             exp_logger.log(engine.db_name, {
                 "ts": t1,
                 "latency_ms": t1 - t0,
@@ -375,6 +479,14 @@ def api_multihop_query(req: MultiHopQueryRequest):
         try:
             t1 = int(_t.time() * 1000)
             result_metas = result.get("metadatas", [])
+            if _OBS_ENABLE:
+                try:
+                    prov = (req.provider or engine.default_provider)
+                    REQ_COUNTER.labels(route="/api/multihop_query", method="POST", provider=prov, retr_method=req.method).inc()
+                    LAT_MS.labels(route="/api/multihop_query", provider=prov, retr_method=req.method).observe(t1 - t0)
+                    CTX_COUNT.labels(route="/api/multihop_query", provider=prov, retr_method=req.method).observe(len(result_metas))
+                except Exception:
+                    pass
             exp_logger.log(engine.db_name, {
                 "ts": t1,
                 "latency_ms": t1 - t0,
@@ -1202,6 +1314,10 @@ def api_feedback_clear(db: Optional[str] = None):
 class DbName(BaseModel):
     name: str
 
+class VersionReq(BaseModel):
+    db: Optional[str] = None
+    version: str
+
 
 @app.get("/api/dbs")
 def api_list_dbs():
@@ -1236,5 +1352,28 @@ def api_delete_db(name: str):
     try:
         engine.delete_db(name)
         return {"status": "ok", "current": engine.db_name, "dbs": engine.list_dbs()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/dbs/purge_version")
+def api_purge_version(req: VersionReq):
+    try:
+        if req.db:
+            engine.use_db(req.db)
+        cnt = engine.purge_version(req.version)
+        return {"status": "ok", "db": engine.db_name, "deleted": cnt}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/dbs/reindex_version")
+def api_reindex_version(req: VersionReq):
+    try:
+        if req.db:
+            engine.use_db(req.db)
+        res = engine.reindex_version(req.version)
+        res["db"] = engine.db_name
+        return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

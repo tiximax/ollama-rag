@@ -8,10 +8,18 @@ class ExperimentLogger:
     """JSONL logger theo DB, xoay file theo ngày.
     - File: data/kb/{db}/logs/exp-YYYYMMDD.jsonl
     - Trạng thái enable per-DB lưu ở settings.json
+    - Redaction tùy chọn qua ENV:
+      * EXP_LOG_REDACT: danh sách key cần che (mặc định: "query"). VD: "query,answer"
+      * EXP_LOG_REDACT_STYLE: "mask" (mặc định) hoặc "hash"
     """
 
     def __init__(self, persist_root: str):
         self.persist_root = persist_root
+        # Redaction config
+        keys = os.getenv("EXP_LOG_REDACT", "query").strip()
+        self._redact_keys = set([k.strip() for k in keys.split(",") if k.strip()]) if keys else set()
+        style = os.getenv("EXP_LOG_REDACT_STYLE", "mask").strip().lower()
+        self._redact_style = style if style in ("mask", "hash") else "mask"
 
     def _db_dir(self, db: str) -> str:
         return os.path.join(self.persist_root, db)
@@ -51,6 +59,28 @@ class ExperimentLogger:
         day = datetime.utcnow().strftime("%Y%m%d")
         return os.path.join(self._log_dir(db), f"exp-{day}.jsonl")
 
+    def _redact_value(self, v: Any) -> Any:
+        try:
+            if self._redact_style == "hash":
+                import hashlib
+                s = str(v).encode("utf-8", errors="ignore")
+                h = hashlib.sha256(s).hexdigest()[:8]
+                return f"sha256:{h}"
+            # default mask
+            return "[REDACTED]"
+        except Exception:
+            return "[REDACTED]"
+
+    def _apply_redaction(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        if not self._redact_keys:
+            return event
+        # shallow copy to avoid mutating caller
+        out = dict(event)
+        for k in list(self._redact_keys):
+            if k in out:
+                out[k] = self._redact_value(out.get(k))
+        return out
+
     def log(self, db: str, event: Dict[str, Any]) -> None:
         if not self._is_enabled(db):
             return
@@ -58,9 +88,11 @@ class ExperimentLogger:
         # Bổ sung thời gian nếu thiếu
         if "ts" not in event:
             event["ts"] = int(time.time() * 1000)
+        # Redact sensitive fields if configured
+        safe_event = self._apply_redaction(event)
         try:
             with open(path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+                f.write(json.dumps(safe_event, ensure_ascii=False) + "\n")
         except Exception:
             pass
 

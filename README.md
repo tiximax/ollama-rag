@@ -1,6 +1,7 @@
 # Ollama RAG App
 
 [![e2e-light](https://github.com/tiximax/ollama-rag/actions/workflows/e2e.yml/badge.svg)](https://github.com/tiximax/ollama-rag/actions/workflows/e2e.yml)
+[![docker-build](https://github.com/tiximax/ollama-rag/actions/workflows/docker.yml/badge.svg)](https://github.com/tiximax/ollama-rag/actions/workflows/docker.yml)
 
 Ứng dụng RAG nhẹ sử dụng FastAPI + ChromaDB + Ollama (LLM + Embeddings), chạy web UI cục bộ.
 
@@ -36,8 +37,13 @@ Cài đặt:
    PowerShell -ExecutionPolicy Bypass -File .\scripts\run_server.ps1
    (hoặc dùng uvicorn: uvicorn app.main:app --host 127.0.0.1 --port 8000)
 
-6) Mở UI:
-   http://127.0.0.1:8000
+Mở UI:
+  http://127.0.0.1:8000
+
+Cross-platform scripts
+- Windows (PowerShell): scripts/run_server.ps1, scripts/run_e2e_light.ps1
+- macOS/Linux (bash): scripts/run_server.sh, scripts/run_e2e_light.sh
+- Make (macOS/Linux): make install, make server, make ingest, make test-light
 
 Triển khai qua Cloudflare Tunnel (tùy chọn)
 - Xem deploy/README.md
@@ -45,6 +51,10 @@ Triển khai qua Cloudflare Tunnel (tùy chọn)
 - cloudflared native trên Windows: deploy/cloudflared/config.yml.example + start-local.ps1
 
 Chạy Playwright e2e
+
+Defaults (ổn định)
+- Retrieval: method=hybrid, k=3, bm25_weight=0.5, rerank=off
+- Dev perf: tinyllama + OLLAMA_NUM_THREAD=2, OLLAMA_NUM_CTX=1024, OLLAMA_NUM_GPU=0
 - Cài đặt một lần: npm install && npm run playwright:install
 - Chế độ nhẹ (khuyến nghị khi dev, giảm CPU):
   PowerShell:
@@ -138,6 +148,30 @@ Multi-hop nâng cao (budget_ms, fanout_first_hop)
   "budget_ms": 200
 }
 ```
+
+API quicklinks (tham khảo nhanh)
+- Retrieval: POST /api/query, POST /api/stream_query, POST /api/multihop_query
+- Provider: GET/POST /api/provider
+- DB: GET /api/dbs, POST /api/dbs/use, POST /api/dbs/create, DELETE /api/dbs/{name}
+- Chats: GET/POST/PATCH/DELETE /api/chats, GET /api/chats/search, GET /api/chats/{id}/export
+- Filters: GET /api/filters
+- Logs: GET /api/logs/info, POST /api/logs/enable, GET /api/logs/summary, GET /api/logs/export, DELETE /api/logs
+- Analytics: GET /api/analytics/db, GET /api/analytics/chat/{id}
+
+DB maintenance CLI (local)
+- List DBs: `python scripts/db_tools.py list-dbs`
+- Create/Delete DB: `python scripts/db_tools.py create-db --name mydb`, `python scripts/db_tools.py delete-db --name mydb`
+- Purge by version: `python scripts/db_tools.py purge-version --db chroma --version vi1`
+- Reindex by version: `python scripts/db_tools.py reindex-version --db chroma --version vi1`
+
+Benchmark
+- Nhanh: PowerShell -ExecutionPolicy Bypass -File .\\scripts\\bench\\run_bench.ps1 (DB=chroma)
+- Tuỳ chỉnh: python scripts/bench/bench_rag.py --method hybrid --k 3 --rounds 3 --enable-logs --db chroma
+
+Release (tag & workflow)
+- Tạo release tag: `PowerShell -ExecutionPolicy Bypass -File .\\scripts\\tag_release.ps1 -Version v0.1.0`
+- Hoặc: `git tag v0.1.0 && git push origin v0.1.0`
+- Workflow `.github/workflows/release.yml` sẽ tạo GitHub Release với auto notes
 
 Cấu hình (tùy chọn .env):
 - OLLAMA_BASE_URL=http://localhost:11434
