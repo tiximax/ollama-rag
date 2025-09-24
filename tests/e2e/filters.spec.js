@@ -22,7 +22,7 @@ async function selectMulti(page, selector, values) {
   await page.selectOption(selector, values);
 }
 
-test.describe('RAG e2e - Filters (language/version)', () => {
+test.describe('RAG e2e - Filters (language/version) @heavy', () => {
   test('Filter by language and version (bm25, streaming)', async ({ page }) => {
     await page.goto('/');
 
