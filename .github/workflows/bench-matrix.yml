@@ -1,0 +1,58 @@
+name: bench-matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: 'Number of rounds'
+        required: false
+        default: '1'
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Ollama (Linux)
+        shell: bash
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          nohup ollama serve >/dev/null 2>&1 &
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then echo "Ollama up"; break; fi; sleep 1;
+          done
+          ollama pull tinyllama
+          ollama pull nomic-embed-text
+
+      - name: Start server
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 >/dev/null 2>&1 &
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:8000 >/dev/null; then echo OK; break; fi
+            sleep 0.5
+          done
+
+      - name: Ingest sample docs
+        env:
+          PYTHONPATH: .
+        run: |
+          python scripts/ingest.py
+
+      - name: Run bench matrix (rounds)
+        env:
+          PYTHONPATH: .
+        run: |
+          python scripts/bench/bench_matrix.py --rounds ${{ inputs.rounds }}

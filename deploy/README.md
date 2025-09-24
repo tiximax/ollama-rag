@@ -42,6 +42,24 @@ A) Docker Compose
 
 B) cloudflared native trên Windows
 
+Healthcheck và non-root user
+- Dockerfile chạy dưới user không phải root (appuser) để tăng an toàn.
+- docker-compose có healthcheck cho rag2app: kiểm tra HTTP 127.0.0.1:8000 trong container bằng Python stdlib.
+
+Smoke test Docker (không cần Tunnel)
+- PowerShell: scripts/smoke/app_smoke.ps1
+  - Build image từ deploy/docker/Dockerfile
+  - Chạy container, đợi / trả 200, rồi dọn container
+
+Cloudflare Access (khuyến nghị trước UI)
+- Dùng Cloudflare Zero Trust Access để bảo vệ domain Tunnel trước khi vào UI 8000.
+- Bước cơ bản:
+  1) Tạo/đăng nhập Zero Trust; bật Access.
+  2) Tạo Application → "Self-hosted" trỏ tới hostname của Tunnel (route đó).
+  3) Thiết lập Policy (e.g., email domain, One-time PIN, SSO SAML/OIDC).
+  4) Áp policy vào route 8000; kiểm tra truy cập yêu cầu xác thực.
+- Lưu ý: Không public cổng 11434 (Ollama). Chỉ expose 8000 (FastAPI UI/API).
+
 Smoke test (Windows)
 - Native:
   - npm run smoke:tunnel:native
