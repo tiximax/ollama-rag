@@ -76,8 +76,8 @@ async def api_upload(files: List[UploadFile] = File(...), db: Optional[str] = Fo
 
 class QueryRequest(BaseModel):
     query: str
-    k: int = 5
-    method: str = "vector"  # vector | bm25 | hybrid
+    k: int = 3
+    method: str = "hybrid"  # vector | bm25 | hybrid
     bm25_weight: float = 0.5
     rerank_enable: bool = False
     rerank_top_n: int = 10
@@ -99,7 +99,7 @@ class QueryRequest(BaseModel):
 
 class MultiHopQueryRequest(BaseModel):
     query: str
-    k: int = 5
+    k: int = 3
     method: str = "hybrid"
     bm25_weight: float = 0.5
     rerank_enable: bool = False
