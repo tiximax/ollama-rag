@@ -204,6 +204,81 @@ class RagEngine:
             self.db_name = DEFAULT_DB
             self._init_client()
 
+    # ===== Maintenance: purge/reindex by version =====
+    def purge_version(self, version: str) -> int:
+        """Delete all chunks whose metadata.version == version. Returns number of deletions (best-effort)."""
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError("Invalid version")
+        try:
+            # Prefer server-side where filter if available
+            self.collection.delete(where={"version": version})  # type: ignore[arg-type]
+            # Invalidate BM25 and filters cache
+            self._bm25 = None
+            self._filters_cache.clear()
+            # Unknown exact count; recompute by diff if needed (skip here)
+            return 0
+        except Exception:
+            # Fallback: load ids and delete matching
+            try:
+                results = self.collection.get(include=["ids", "metadatas"])  # type: ignore[arg-type]
+            except Exception:
+                results = self.collection.get()
+            ids = results.get("ids", [])
+            metas = results.get("metadatas", [])
+            del_ids = []
+            for i, md in enumerate(metas):
+                if (md or {}).get("version") == version:
+                    try:
+                        del_ids.append(ids[i])
+                    except Exception:
+                        continue
+            if del_ids:
+                self.collection.delete(ids=del_ids)
+            self._bm25 = None
+            self._filters_cache.clear()
+            return len(del_ids)
+
+    def reindex_version(self, version: str) -> Dict[str, int]:
+        """Reindex all sources that currently have metadata.version == version.
+        Steps: collect unique `source` paths for that version, purge version, re-read files and ingest.
+        Returns { deleted, reingested }.
+        """
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError("Invalid version")
+        # Collect sources for version
+        sources = set()
+        try:
+            results = self.collection.get(where={"version": version}, include=["metadatas"])  # type: ignore[arg-type]
+            metas = results.get("metadatas", [])  # type: ignore[assignment]
+        except Exception:
+            try:
+                results = self.collection.get(include=["metadatas"])  # type: ignore[arg-type]
+            except Exception:
+                results = self.collection.get()
+            metas = results.get("metadatas", [])  # type: ignore[assignment]
+        for md in metas:
+            src = (md or {}).get("source")
+            if isinstance(src, str) and src:
+                sources.add(src)
+        deleted = self.purge_version(version)
+        # Re-read files, ingest
+        reingested = 0
+        for src in sorted(sources):
+            try:
+                text = ""
+                if src.lower().endswith(".txt"):
+                    with open(src, "r", encoding="utf-8") as fh:
+                        text = fh.read()
+                elif src.lower().endswith(".pdf"):
+                    text = extract_text_from_pdf(src)
+                elif src.lower().endswith(".docx"):
+                    text = extract_text_from_docx(src)
+                if text.strip():
+                    reingested += self.ingest_texts([text], [{"source": src}], version=version)
+            except Exception:
+                continue
+        return {"deleted": int(deleted or 0), "reingested": int(reingested or 0)}
+
     # ===== Ingest =====
     def _detect_lang(self, text: str) -> Optional[str]:
         try:

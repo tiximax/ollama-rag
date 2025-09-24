@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Response, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
@@ -105,6 +105,28 @@ def api_ingest(req: IngestRequest):
         return {"status": "ok", "chunks_indexed": count, "db": engine.db_name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Observability (Prometheus) =====
+_OBS_ENABLE = os.getenv("OBSERVABILITY_ENABLE", "0").strip() not in ("0", "false", "False")
+if _OBS_ENABLE:
+    try:
+        from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+        REQ_COUNTER = Counter(
+            "rag_requests_total", "Total RAG requests", ["route", "method", "provider", "retr_method"],
+        )
+        LAT_MS = Histogram(
+            "rag_latency_ms", "RAG request latency (ms)", ["route", "provider", "retr_method"],
+            buckets=(100,250,500,1000,2000,4000,8000,16000,32000)
+        )
+        CTX_COUNT = Histogram(
+            "rag_contexts_count", "RAG contexts returned", ["route", "provider", "retr_method"],
+            buckets=(0,1,2,3,5,8,13)
+        )
+        @app.get("/metrics")
+        def metrics():
+            return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    except Exception:
+        _OBS_ENABLE = False
 
 # ===== Upload & Ingest =====
 @app.post("/api/upload")
@@ -238,6 +260,14 @@ def api_query(req: QueryRequest):
         # Log
         try:
             t1 = int(_t.time() * 1000)
+            if _OBS_ENABLE:
+                try:
+                    prov = (req.provider or engine.default_provider)
+                    REQ_COUNTER.labels(route="/api/query", method="POST", provider=prov, retr_method=req.method).inc()
+                    LAT_MS.labels(route="/api/query", provider=prov, retr_method=req.method).observe(t1 - t0)
+                    CTX_COUNT.labels(route="/api/query", provider=prov, retr_method=req.method).observe(len(result.get("metadatas", [])))
+                except Exception:
+                    pass
             exp_logger.log(engine.db_name, {
                 "ts": t1,
                 "latency_ms": t1 - t0,
@@ -449,6 +479,14 @@ def api_multihop_query(req: MultiHopQueryRequest):
         try:
             t1 = int(_t.time() * 1000)
             result_metas = result.get("metadatas", [])
+            if _OBS_ENABLE:
+                try:
+                    prov = (req.provider or engine.default_provider)
+                    REQ_COUNTER.labels(route="/api/multihop_query", method="POST", provider=prov, retr_method=req.method).inc()
+                    LAT_MS.labels(route="/api/multihop_query", provider=prov, retr_method=req.method).observe(t1 - t0)
+                    CTX_COUNT.labels(route="/api/multihop_query", provider=prov, retr_method=req.method).observe(len(result_metas))
+                except Exception:
+                    pass
             exp_logger.log(engine.db_name, {
                 "ts": t1,
                 "latency_ms": t1 - t0,
@@ -1276,6 +1314,10 @@ def api_feedback_clear(db: Optional[str] = None):
 class DbName(BaseModel):
     name: str
 
+class VersionReq(BaseModel):
+    db: Optional[str] = None
+    version: str
+
 
 @app.get("/api/dbs")
 def api_list_dbs():
@@ -1310,5 +1352,28 @@ def api_delete_db(name: str):
     try:
         engine.delete_db(name)
         return {"status": "ok", "current": engine.db_name, "dbs": engine.list_dbs()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/dbs/purge_version")
+def api_purge_version(req: VersionReq):
+    try:
+        if req.db:
+            engine.use_db(req.db)
+        cnt = engine.purge_version(req.version)
+        return {"status": "ok", "db": engine.db_name, "deleted": cnt}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/dbs/reindex_version")
+def api_reindex_version(req: VersionReq):
+    try:
+        if req.db:
+            engine.use_db(req.db)
+        res = engine.reindex_version(req.version)
+        res["db"] = engine.db_name
+        return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
