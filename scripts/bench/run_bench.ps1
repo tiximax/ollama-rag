@@ -16,4 +16,4 @@ $env:ORT_INTER_OP_THREADS = "1"
 $python = ".\.venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { $python = "python" }
 
-& $python "scripts/bench/bench_rag.py" --url "http://127.0.0.1:8000" --db "default" --dataset "data/bench/queries.json" --method "hybrid" --k 3 --enable-logs --rounds 3
+& $python "scripts/bench/bench_rag.py" --url "http://127.0.0.1:8000" --db "chroma" --dataset "data/bench/queries.json" --method "hybrid" --k 3 --enable-logs --rounds 3
