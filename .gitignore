@@ -32,6 +32,11 @@ data/chroma/
 .vscode/
 .idea/
 
+# PyInstaller
+build/
+dist/
+*.spec
+
 # Env & secrets
 .env
 .env.*
