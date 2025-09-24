@@ -8,7 +8,7 @@ async function waitForTextContains(page, selector, regex, timeout = 30000) {
 }
 
 test.describe('RAG e2e', () => {
-  test('Ingest và hỏi (non-stream)', async ({ page }) => {
+test('Ingest và hỏi (non-stream) @heavy', async ({ page }) => {
     await page.goto('/');
 
     await page.getByRole('button', { name: 'Index tài liệu mẫu' }).click();
@@ -26,7 +26,7 @@ test.describe('RAG e2e', () => {
     await expect(page.locator(resultSel)).not.toHaveText('', { timeout: 60000 });
   });
 
-  test('Hỏi ở chế độ Streaming và có contexts', async ({ page }) => {
+test('Hỏi ở chế độ Streaming và có contexts @heavy', async ({ page }) => {
     await page.goto('/');
 
     await page.selectOption('#method', 'hybrid');
