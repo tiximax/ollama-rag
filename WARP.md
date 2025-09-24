@@ -51,6 +51,18 @@ npm run test:e2e -- tests/e2e/<file>.spec.ts
 npx playwright test -g "pattern"
 ```
 
+### Unit tests (pytest)
+```powershell
+# Install dev tools (includes pytest)
+pip install -r requirements-dev.txt
+
+# Run unit tests
+pytest -q tests/unit
+
+# Run a single test
+pytest -q tests/unit/test_rag_engine_unit.py::test_valid_db_name
+```
+
 ### Lint/Format
 ```powershell
 # Install dev tools
