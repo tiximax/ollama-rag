@@ -158,9 +158,20 @@ API quicklinks (tham khảo nhanh)
 - Logs: GET /api/logs/info, POST /api/logs/enable, GET /api/logs/summary, GET /api/logs/export, DELETE /api/logs
 - Analytics: GET /api/analytics/db, GET /api/analytics/chat/{id}
 
+DB maintenance CLI (local)
+- List DBs: `python scripts/db_tools.py list-dbs`
+- Create/Delete DB: `python scripts/db_tools.py create-db --name mydb`, `python scripts/db_tools.py delete-db --name mydb`
+- Purge by version: `python scripts/db_tools.py purge-version --db chroma --version vi1`
+- Reindex by version: `python scripts/db_tools.py reindex-version --db chroma --version vi1`
+
 Benchmark
-- Nhanh: PowerShell -ExecutionPolicy Bypass -File .\scripts\bench\run_bench.ps1 (DB=chroma)
+- Nhanh: PowerShell -ExecutionPolicy Bypass -File .\\scripts\\bench\\run_bench.ps1 (DB=chroma)
 - Tuỳ chỉnh: python scripts/bench/bench_rag.py --method hybrid --k 3 --rounds 3 --enable-logs --db chroma
+
+Release (tag & workflow)
+- Tạo release tag: `PowerShell -ExecutionPolicy Bypass -File .\\scripts\\tag_release.ps1 -Version v0.1.0`
+- Hoặc: `git tag v0.1.0 && git push origin v0.1.0`
+- Workflow `.github/workflows/release.yml` sẽ tạo GitHub Release với auto notes
 
 Cấu hình (tùy chọn .env):
 - OLLAMA_BASE_URL=http://localhost:11434
