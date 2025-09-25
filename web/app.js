@@ -90,10 +90,28 @@ const lgByRoute = document.getElementById('lg-by-route');
 const lgByProvider = document.getElementById('lg-by-provider');
 const lgByMethod = document.getElementById('lg-by-method');
 
+// New UI elements (v2)
+const docList = document.getElementById('doc-list');
+const docDeleteBtn = document.getElementById('btn-docs-delete');
+const chatList = document.getElementById('chat-list');
+const reloadBtn = document.getElementById('btn-reload');
+const dbStatus = document.getElementById('db-status');
+// Settings UI
+const menuSettings = document.getElementById('menu-settings');
+const settingsOverlay = document.getElementById('settings-overlay');
+const settingsModal = document.getElementById('settings-modal');
+const settingsClose = document.getElementById('settings-close');
+const settingsProvider = document.getElementById('settings-provider');
+const settingsStreamDefault = document.getElementById('settings-stream-default');
+const settingsLangs = document.getElementById('settings-langs');
+const settingsSave = document.getElementById('settings-save');
+
 async function loadProvider() {
   try {
     const resp = await fetch('/api/provider');
     const data = await resp.json();
+    // Sync settings modal select if present
+    if (settingsProvider && data.provider) settingsProvider.value = data.provider;
     if (resp.ok && data.provider) {
       if (providerSel) providerSel.value = data.provider;
       if (providerName) providerName.textContent = data.provider;
@@ -214,6 +232,65 @@ async function loadDbs() {
   }
 }
 
+async function loadDocs() {
+  try {
+    const params = new URLSearchParams();
+    if (dbSelect.value) params.set('db', dbSelect.value);
+    const resp = await fetch('/api/docs?' + params.toString());
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không tải được danh sách tài liệu');
+    if (docList) {
+      docList.innerHTML = '';
+      const docs = data.docs || [];
+      docs.forEach(item => {
+        const li = document.createElement('li');
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = item.source;
+        const span = document.createElement('span'); span.className = 'title'; span.textContent = `${item.source} (${item.chunks})`;
+        li.appendChild(cb); li.appendChild(span);
+        docList.appendChild(li);
+      });
+      // Update topbar DB status
+      const totalDocs = docs.length;
+      const totalChunks = docs.reduce((s, it) => s + (parseInt(it.chunks, 10) || 0), 0);
+      const name = (dbSelect && dbSelect.value) || 'default';
+      if (dbStatus) dbStatus.textContent = `DB '${name}' — ${totalDocs} tài liệu, ${totalChunks} chunks`;
+    }
+  } catch (e) {
+    console.error('loadDocs error', e);
+  }
+}
+
+function renderChatList(chats) {
+  if (!chatList) return;
+  chatList.innerHTML = '';
+  (chats || []).forEach(c => {
+    const li = document.createElement('li');
+    const radio = document.createElement('input'); radio.type = 'radio'; radio.name = 'chatlist'; radio.value = c.id;
+    radio.addEventListener('change', () => { chatSelect.value = c.id; });
+    const span = document.createElement('span'); span.className = 'title'; span.textContent = c.name || c.id;
+    li.appendChild(radio); li.appendChild(span);
+    chatList.appendChild(li);
+  });
+}
+
+async function deleteSelectedDocs() {
+  try {
+    if (!docList) return;
+    const selected = Array.from(docList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+    if (!selected.length) { alert('Chọn ít nhất 1 tài liệu'); return; }
+    const resp = await fetch('/api/docs', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ db: dbSelect.value || null, sources: selected })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không xóa được');
+    await loadDocs();
+  } catch (e) {
+    alert('Lỗi xóa tài liệu: ' + e);
+  }
+}
+
 async function useDb(name) {
   try {
     const resp = await fetch('/api/dbs/use', {
@@ -281,9 +358,13 @@ async function loadChats() {
       opt.textContent = c.name || c.id;
       chatSelect.appendChild(opt);
     });
-    // giữ nguyên lựa chọn cũ nếu còn
+    // Update sidebar list
+    renderChatList(chats);
+    // keep previous selection if exists
     if (prev && [...chatSelect.options].some(o => o.value === prev)) {
       chatSelect.value = prev;
+      const r = chatList && chatList.querySelector(`input[type=radio][value="${CSS.escape(prev)}"]`);
+      if (r) r.checked = true;
     }
   } catch (e) {
     console.error('loadChats error', e);
@@ -481,6 +562,38 @@ function downloadBlob(name, blob) {
   URL.revokeObjectURL(url);
 }
 
+/***** Settings helpers *****/
+function settingsLoadLocal() {
+  try {
+    const raw = localStorage.getItem('rag_settings') || '{}';
+    const s = JSON.parse(raw);
+    if (settingsStreamDefault) settingsStreamDefault.checked = !!s.stream_default;
+    if (settingsLangs && typeof s.langs === 'string') settingsLangs.value = s.langs;
+  } catch {}
+}
+function settingsSaveLocal() {
+  try {
+    const s = {
+      stream_default: settingsStreamDefault ? !!settingsStreamDefault.checked : false,
+      langs: settingsLangs ? (settingsLangs.value || '') : ''
+    };
+    localStorage.setItem('rag_settings', JSON.stringify(s));
+  } catch {}
+}
+function settingsApplyToUI() {
+  try {
+    // Streaming default
+    const s = JSON.parse(localStorage.getItem('rag_settings') || '{}');
+    if (streamCk && typeof s.stream_default === 'boolean') streamCk.checked = !!s.stream_default;
+    // Preselect languages in filters after filters loaded
+    const langsCsv = (s.langs || '').trim();
+    if (langsCsv && filterLangsSel) {
+      const want = new Set(langsCsv.split(',').map(x => x.trim()).filter(Boolean));
+      Array.from(filterLangsSel.options || []).forEach(opt => { opt.selected = want.has(opt.value); });
+    }
+  } catch {}
+}
+
 async function uploadAndIngest() {
   try {
     const files = fileUploadInput && fileUploadInput.files ? Array.from(fileUploadInput.files) : [];
@@ -674,14 +787,14 @@ async function ingestByPaths() {
 
 async function ask() {
   const q = queryInput.value.trim();
-  const k = parseInt(topkInput.value || '5', 10);
+  const k = parseInt((topkInput && topkInput.value) || '5', 10);
   const streaming = streamCk.checked;
-  const method = methodSel.value || 'vector';
-  const bm25_weight = parseFloat(bm25Range.value || '0.5');
-  const rerank_enable = !!rerankCk.checked;
-  const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
-  const rewrite_enable = !!rewriteCk.checked;
-  const rewrite_n = parseInt(rewriteN.value || '2', 10);
+  const method = methodSel ? (methodSel.value || 'vector') : 'vector';
+  const bm25_weight = bm25Range ? parseFloat(bm25Range.value || '0.5') : 0.5;
+  const rerank_enable = rerankCk ? !!rerankCk.checked : false;
+  const rerank_top_n = rerankTopN ? parseInt(rerankTopN.value || '10', 10) : 10;
+  const rewrite_enable = rewriteCk ? !!rewriteCk.checked : false;
+  const rewrite_n = rewriteN ? parseInt(rewriteN.value || '2', 10) : 2;
   if (!q) {
     resultDiv.textContent = 'Vui lòng nhập câu hỏi';
     return;
@@ -697,13 +810,13 @@ async function ask() {
     const versions = getSelectedValues(filterVersSel);
     gLastQuery = q;
     if (streaming) {
-      if (multihopCk.checked) {
+      if (multihopCk && multihopCk.checked) {
         await askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat, { languages, versions });
       } else {
         await askStreaming(q, k, method, bm25_weight, chat_id, save_chat, { rewrite_enable, rewrite_n, languages, versions });
       }
     } else {
-      if (multihopCk.checked) {
+      if (multihopCk && multihopCk.checked) {
         const resp = await fetch('/api/multihop_query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -751,8 +864,8 @@ async function ask() {
 }
 
 async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat, opt) {
-  const rerank_enable = !!rerankCk.checked;
-  const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
+  const rerank_enable = rerankCk ? !!rerankCk.checked : false;
+  const rerank_top_n = rerankTopN ? parseInt(rerankTopN.value || '10', 10) : 10;
   const provider = providerSel ? providerSel.value : undefined;
   const payload = { query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, provider, chat_id, save_chat, db: dbSelect.value || null };
   if (rerank_enable && rrProvider) {
@@ -824,10 +937,10 @@ async function askStreaming(q, k, method, bm25_weight, chat_id, save_chat, opt) 
 }
 
 async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat, opt) {
-  const rerank_enable = !!rerankCk.checked;
-  const rerank_top_n = parseInt(rerankTopN.value || '10', 10);
-  const depth = parseInt(hopDepth.value || '2', 10);
-  const fanout = parseInt(hopFanout.value || '2', 10);
+  const rerank_enable = rerankCk ? !!rerankCk.checked : false;
+  const rerank_top_n = rerankTopN ? parseInt(rerankTopN.value || '10', 10) : 10;
+  const depth = hopDepth ? parseInt(hopDepth.value || '2', 10) : 2;
+  const fanout = hopFanout ? parseInt(hopFanout.value || '2', 10) : 2;
   const provider = providerSel ? providerSel.value : undefined;
   const payload = { query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth, fanout, provider, chat_id, save_chat, db: dbSelect.value || null };
   if (opt) {
@@ -894,7 +1007,7 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;');
 }
 
-ingestBtn.addEventListener('click', ingest);
+if (ingestBtn) ingestBtn.addEventListener('click', ingest);
 askBtn.addEventListener('click', ask);
 
 dbSelect.addEventListener('change', async () => {
@@ -902,6 +1015,8 @@ dbSelect.addEventListener('change', async () => {
   if (name) await useDb(name);
   await loadChats();
   await loadFilters();
+  await loadDocs();
+  settingsApplyToUI();
   await loadLogsInfo();
   await loadAnalytics();
   await loadLogsSummary();
@@ -928,6 +1043,32 @@ if (logsEnableCk) logsEnableCk.addEventListener('change', async () => { await se
 if (logsExportBtn) logsExportBtn.addEventListener('click', exportLogs);
 if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', loadAnalytics);
 if (logsSummaryBtn) logsSummaryBtn.addEventListener('click', loadLogsSummary);
+if (docDeleteBtn) docDeleteBtn.addEventListener('click', deleteSelectedDocs);
+if (reloadBtn) reloadBtn.addEventListener('click', async () => { await loadDbs(); await loadChats(); await loadFilters(); await loadDocs(); settingsApplyToUI(); await loadLogsInfo(); await loadAnalytics(); await loadLogsSummary(); });
+
+// Settings events
+if (menuSettings && settingsOverlay && settingsModal && settingsClose && settingsSave) {
+  const openSettings = () => { settingsOverlay.hidden = false; settingsModal.hidden = false; settingsLoadLocal(); };
+  const closeSettings = () => { settingsOverlay.hidden = true; settingsModal.hidden = true; };
+  menuSettings.addEventListener('click', openSettings);
+  settingsClose.addEventListener('click', closeSettings);
+  settingsOverlay.addEventListener('click', closeSettings);
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSettings(); });
+  settingsSave.addEventListener('click', async () => {
+    try {
+      // Save local settings
+      settingsSaveLocal();
+      settingsApplyToUI();
+      // Save provider to backend
+      if (settingsProvider && settingsProvider.value) {
+        await setProvider(settingsProvider.value);
+      }
+      closeSettings();
+    } catch (e) {
+      alert('Lưu cài đặt lỗi: ' + e);
+    }
+  });
+}
 if (citationsChatBtn) citationsChatBtn.addEventListener('click', async () => {
   const id = chatSelect.value;
   if (!id) { alert('Chưa chọn chat'); return; }
@@ -962,35 +1103,54 @@ if (citationsDbBtn) citationsDbBtn.addEventListener('click', async () => {
 });
 
 // init
-loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); await loadLogsInfo(); await loadAnalytics(); await loadLogsSummary(); }));
+settingsLoadLocal();
+loadProvider().then(() => loadDbs().then(async () => {
+  await loadChats();
+  await loadFilters();
+  await loadDocs();
+  settingsApplyToUI();
+  await loadLogsInfo();
+  await loadAnalytics();
+  await loadLogsSummary();
+}));
 
-methodSel.addEventListener('change', () => {
-  const m = methodSel.value;
-  const show = m === 'hybrid';
-  bm25Wrap.style.display = show ? '' : 'none';
-});
+if (methodSel) {
+  methodSel.addEventListener('change', () => {
+    const m = methodSel.value;
+    const show = m === 'hybrid';
+    if (bm25Wrap) bm25Wrap.style.display = show ? '' : 'none';
+  });
+}
 
-rerankCk.addEventListener('change', () => {
-  const on = rerankCk.checked;
-  rerankTopWrap.style.display = on ? '' : 'none';
-  if (rerankAdv) rerankAdv.style.display = on ? '' : 'none';
-});
+if (rerankCk) {
+  rerankCk.addEventListener('change', () => {
+    const on = rerankCk.checked;
+    if (rerankTopWrap) rerankTopWrap.style.display = on ? '' : 'none';
+    if (rerankAdv) rerankAdv.style.display = on ? '' : 'none';
+  });
+}
 
-bm25Range.addEventListener('input', () => {
-  bm25Val.textContent = bm25Range.value;
-});
+if (bm25Range && bm25Val) {
+  bm25Range.addEventListener('input', () => {
+    bm25Val.textContent = bm25Range.value;
+  });
+}
 
-multihopCk.addEventListener('change', () => {
-  const on = multihopCk.checked;
-  multihopDepthWrap.style.display = on ? '' : 'none';
-  multihopFanoutWrap.style.display = on ? '' : 'none';
-  multihopFanout1Wrap.style.display = on ? '' : 'none';
-  multihopBudgetWrap.style.display = on ? '' : 'none';
-});
+if (multihopCk) {
+  multihopCk.addEventListener('change', () => {
+    const on = multihopCk.checked;
+    if (multihopDepthWrap) multihopDepthWrap.style.display = on ? '' : 'none';
+    if (multihopFanoutWrap) multihopFanoutWrap.style.display = on ? '' : 'none';
+    if (multihopFanout1Wrap) multihopFanout1Wrap.style.display = on ? '' : 'none';
+    if (multihopBudgetWrap) multihopBudgetWrap.style.display = on ? '' : 'none';
+  });
+}
 
-rewriteCk.addEventListener('change', () => {
-  rewriteNWrap.style.display = rewriteCk.checked ? '' : 'none';
-});
+if (rewriteCk) {
+  rewriteCk.addEventListener('change', () => {
+    if (rewriteNWrap) rewriteNWrap.style.display = rewriteCk.checked ? '' : 'none';
+  });
+}
 
 if (providerSel) {
   providerSel.addEventListener('change', async () => {

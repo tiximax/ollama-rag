@@ -282,6 +282,73 @@ class RagEngine:
             return 0
         return self.ingest_texts(contents, metas, version=version)
 
+    # ===== Docs listing/deletion =====
+    def list_sources(self) -> List[Dict[str, Any]]:
+        """Return a list of unique sources with their chunk counts.
+        Safe across ChromaDB versions by using .get(include=["metadatas"]) with fallback.
+        """
+        try:
+            results = self.collection.get(include=["metadatas"])  # type: ignore[arg-type]
+            metas = results.get("metadatas", [])
+        except Exception:
+            results = self.collection.get()
+            metas = results.get("metadatas", [])
+        counts: Dict[str, int] = {}
+        for md in metas:
+            try:
+                src = str((md or {}).get("source") or "")
+            except Exception:
+                src = ""
+            if not src:
+                continue
+            counts[src] = counts.get(src, 0) + 1
+        items = [{"source": s, "chunks": c} for s, c in sorted(counts.items(), key=lambda x: x[0])]
+        return items
+
+    def delete_sources(self, sources: List[str]) -> int:
+        """Delete all chunks whose metadata.source is in the provided list.
+        Returns the number of source entries attempted (not exact chunk count).
+        """
+        if not sources:
+            return 0
+        deleted = 0
+        for s in sources:
+            if not s:
+                continue
+            try:
+                # Preferred path (supported in newer chromadb):
+                self.collection.delete(where={"source": s})  # type: ignore[arg-type]
+                deleted += 1
+                continue
+            except Exception:
+                pass
+            # Fallback: try to fetch IDs then delete by ids
+            try:
+                ids: List[str] = []
+                try:
+                    res = self.collection.get(where={"source": s}, include=["ids"])  # type: ignore[arg-type]
+                    raw_ids = res.get("ids", [])
+                except Exception:
+                    res = self.collection.get()
+                    raw_ids = res.get("ids", [])
+                # raw_ids may be nested list depending on API; flatten safely
+                if isinstance(raw_ids, list):
+                    for item in raw_ids:
+                        if isinstance(item, list):
+                            ids.extend([str(x) for x in item])
+                        elif item is not None:
+                            ids.append(str(item))
+                if ids:
+                    self.collection.delete(ids=ids)
+                    deleted += 1
+            except Exception:
+                # Ignore errors per-source to be robust
+                pass
+        # Invalidate caches
+        self._bm25 = None
+        self._filters_cache.clear()
+        return deleted
+
     # ===== Tokenize & BM25 =====
     @staticmethod
     def _tokenize(text: str) -> List[str]:

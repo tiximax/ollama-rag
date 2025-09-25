@@ -7,199 +7,114 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <div class="container">
-      <h1>Ollama RAG App</h1>
-      <div class="actions">
-        <div class="db-bar">
-          <label>DB:
-            <select id="db-select"></select>
-          </label>
-          <input id="db-new-name" type="text" placeholder="Tên DB mới" />
-          <button id="btn-db-create">Tạo DB</button>
-          <button id="btn-db-delete">Xóa DB</button>
+    <div class="ui-root">
+      <div class="menubar">
+        <span class="menu-item" id="menu-file">File</span>
+        <span class="menu-item" id="menu-settings">Cài đặt</span>
+        <span class="menu-item" id="menu-help">Hỗ trợ</span>
+      </div>
+      <!-- Top action bar -->
+      <div class="topbar">
+        <div class="left">
+          <span class="label">Vector DB:</span>
+          <select id="db-select" class="control"></select>
+          <input id="db-new-name" class="control" type="text" placeholder="Tên DB mới" />
+          <button id="btn-db-create" class="btn">DB mới</button>
+          <button id="btn-db-delete" class="btn danger">Xóa DB</button>
         </div>
-        <div class="chat-bar">
-          <label>Chat:
-            <select id="chat-select"></select>
+        <div class="right">
+          <input id="ingest-paths" class="control wide" type="text" placeholder="Đường dẫn hoặc URL (ví dụ data/docs/*.txt)" />
+          <button id="btn-ingest-paths" class="btn">Thêm vào DB</button>
+          <label class="btn file">
+            Chọn file...
+            <input id="file-upload" type="file" multiple accept=".txt,.pdf,.docx" hidden />
           </label>
-          <button id="btn-chat-new">New</button>
-          <button id="btn-chat-rename">Rename</button>
-          <button id="btn-chat-delete">Delete</button>
-          <button id="btn-chat-export-json">Export JSON</button>
-          <button id="btn-chat-export-md">Export MD</button>
-          <button id="btn-chat-delete-all">Delete All</button>
-          <button id="btn-chat-export-db-json">Export DB (JSON)</button>
-          <button id="btn-chat-export-db-md">Export DB (MD)</button>
-          <button id="btn-citations-chat">Export Citations (Chat)</button>
-          <button id="btn-citations-db">Export Citations (DB)</button>
-          <span class="opt">Filter: src <input id="cit-src" placeholder="substring" style="width:120px;" /> ver <input id="cit-ver" placeholder="v" style="width:70px;" /> lang <input id="cit-lang" placeholder="vi|en" style="width:70px;" /></span>
-          <label class="opt"><input id="ck-save-chat" type="checkbox" checked /> Lưu hội thoại</label>
-          <label class="opt">Tìm:
-            <input id="chat-search" type="text" placeholder="Tìm trong DB..." />
-            <button id="btn-chat-search">Search</button>
-          </label>
-        </div>
-        <div class="ingest-bar">
-          <button id="btn-ingest">Index tài liệu mẫu</button>
-          <label class="opt">Version:
-            <input id="ingest-version" type="text" placeholder="Phiên bản (optional)" />
-          </label>
-          <label class="opt">Paths:
-            <input id="ingest-paths" type="text" placeholder="Đường dẫn hoặc glob (ví dụ data/docs/*.txt)" />
-          </label>
-          <button id="btn-ingest-paths">Ingest Paths</button>
-          <label class="opt">Upload:
-            <input id="file-upload" type="file" multiple accept=".txt,.pdf,.docx" />
-            <button id="btn-upload">Upload & Ingest</button>
-          </label>
-          <span class="logs-bar" style="margin-left:12px;">
-            <label class="opt"><input id="ck-logs-enable" type="checkbox" /> Log experiments</label>
-            <button id="btn-logs-export">Export Logs</button>
-          </span>
+          <button id="btn-upload" class="btn">Ingest file</button>
+          <button id="btn-reload" class="btn">Tải lại</button>
+          <button id="btn-chat-export-db-json" class="btn">Export DB...</button>
+          <span id="db-status" class="status"></span>
         </div>
       </div>
-      <div class="eval-panel" style="margin: 8px 0; padding: 8px; border: 1px solid #ddd;">
-        <h3>Offline Evaluation</h3>
-        <p>Nhập JSON dataset (ví dụ): {"k":3,"method":"bm25","queries":[{"query":"...","expected_substrings":["..."]}]}</p>
-        <textarea id="eval-json" rows="6" style="width:100%; font-family: monospace;"></textarea>
-        <div style="margin-top:6px;">
-          <button id="btn-eval-run">Run Eval</button>
-        </div>
-        <div id="eval-result" class="result" style="margin-top:6px;"></div>
+
+      <div class="workspace">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+          <div class="panel">
+            <div class="panel-title">Tài liệu trong DB (doc_id):</div>
+            <ul id="doc-list" class="list"></ul>
+            <div class="panel-actions">
+              <button id="btn-docs-delete" class="btn danger">Xóa tài liệu đã chọn</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <button id="btn-chat-new" class="btn primary full">Hội thoại mới</button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">Lịch sử hội thoại:</div>
+            <ul id="chat-list" class="list"></ul>
+          </div>
+
+          <!-- Hidden select to keep compatibility with existing JS logic -->
+          <select id="chat-select" style="display:none;"></select>
+        </aside>
+
+        <!-- Main area -->
+        <main class="main">
+          <div class="panel">
+            <div class="panel-title">Hỏi - Đáp</div>
+            <div id="result" class="result" style="min-height: 160px;"></div>
+            <div id="contexts" class="contexts"></div>
+            <div id="citations" class="citations"></div>
+          </div>
+          <div class="query-row">
+            <input id="txt-query" type="text" placeholder="Nhập câu hỏi..." class="query-input" />
+            <button id="btn-ask" class="btn primary">Gửi</button>
+            <label class="opt"><input id="ck-save-chat" type="checkbox" checked /> Lưu hội thoại</label>
+            <label class="opt">Provider:
+              <select id="provider-select" class="control">
+                <option value="ollama" selected>Ollama</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </label>
+            <label class="opt"><input id="ck-stream" type="checkbox" /> Streaming</label>
+          </div>
+          <footer class="footer">
+            <small>Provider: <code id="provider-name">ollama</code> | Model: <code id="model-name">llama3.1:8b</code> | Embed: <code id="embed-name">nomic-embed-text</code></small>
+          </footer>
+        </main>
       </div>
-      <div class="analytics" style="margin: 8px 0; padding: 8px; border: 1px solid #ddd;">
-        <h3>Analytics</h3>
-        <div style="margin-bottom:6px;">
-          <button id="btn-analytics-refresh">Refresh</button>
-        </div>
-        <div class="analytics-grid">
-          <div>Chats: <strong id="an-chats">-</strong></div>
-          <div>QA pairs: <strong id="an-qa">-</strong></div>
-          <div>Answered: <strong id="an-answered">-</strong></div>
-          <div>With contexts: <strong id="an-withctx">-</strong></div>
-          <div>Ans len avg: <strong id="an-ans-avg">-</strong></div>
-          <div>Ans len median: <strong id="an-ans-med">-</strong></div>
-        </div>
-        <div class="analytics-lists" style="margin-top:6px; display:flex; gap:12px; flex-wrap:wrap;">
-          <div><div><strong>Top sources</strong></div><ul id="an-top-sources"></ul></div>
-          <div><div><strong>Top versions</strong></div><ul id="an-top-versions"></ul></div>
-          <div><div><strong>Top languages</strong></div><ul id="an-top-langs"></ul></div>
-        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-overlay" class="overlay" hidden></div>
+    <div id="settings-modal" class="modal" hidden>
+      <div class="modal-header">
+        <div class="modal-title">Cài đặt</div>
+        <button id="settings-close" class="btn">✕</button>
       </div>
-      <div class="logs-summary" style="margin: 8px 0; padding: 8px; border: 1px solid #ddd;">
-        <h3>Logs Summary</h3>
-        <div style="margin-bottom:6px;">
-          since <input id="logs-since" placeholder="YYYYMMDD" style="width:100px;" />
-          until <input id="logs-until" placeholder="YYYYMMDD" style="width:100px;" />
-          <button id="btn-logs-summary-refresh">Refresh</button>
-        </div>
-        <div class="logs-grid">
-          <div>Total: <strong id="lg-total">-</strong></div>
-          <div>Median latency(ms): <strong id="lg-med">-</strong></div>
-          <div>Contexts rate: <strong id="lg-rate">-</strong></div>
-        </div>
-        <div class="logs-lists" style="margin-top:6px; display:flex; gap:12px; flex-wrap:wrap;">
-          <div><div><strong>By route</strong></div><ul id="lg-by-route"></ul></div>
-          <div><div><strong>By provider</strong></div><ul id="lg-by-provider"></ul></div>
-          <div><div><strong>By method</strong></div><ul id="lg-by-method"></ul></div>
-        </div>
-      </div>
-      <div class="query">
-        <input id="txt-query" type="text" placeholder="Nhập câu hỏi..." />
-        <label class="opt">k:
-          <input id="top-k" type="number" min="1" max="10" value="5" />
-        </label>
-        <label class="opt">Phương pháp:
-          <select id="method">
-            <option value="vector" selected>Vector</option>
-            <option value="bm25">BM25</option>
-            <option value="hybrid">Hybrid</option>
-          </select>
-        </label>
-        <label class="opt" id="bm25-weight-wrap" style="display:none;">
-          w(BM25):
-          <input id="bm25-weight" type="range" min="0" max="1" step="0.05" value="0.5" />
-          <span id="bm25-weight-val">0.5</span>
-        </label>
-        <label class="opt" id="rerank-wrap">
-          <input id="ck-rerank" type="checkbox" /> Reranker (BGE/Embed)
-        </label>
-        <label class="opt" id="rerank-topn-wrap" style="display:none;">
-          Top-N:
-          <input id="rerank-topn" type="number" min="1" max="50" value="10" />
-        </label>
-        <span id="rerank-adv" style="display:none; margin-left:8px;">
-          <label class="opt">Rerank provider:
-            <select id="rr-provider">
-              <option value="auto" selected>Auto</option>
-              <option value="bge">BGE</option>
-              <option value="embed">Embed</option>
-            </select>
-          </label>
-          <label class="opt">rr_max_k:
-            <input id="rr-maxk" type="number" min="1" max="100" value="10" />
-          </label>
-          <label class="opt">batch:
-            <input id="rr-batch" type="number" min="1" max="64" value="16" />
-          </label>
-          <label class="opt">threads:
-            <input id="rr-threads" type="number" min="1" max="8" value="1" />
-          </label>
-        </span>
-        <label class="opt" id="rewrite-wrap">
-          <input id="ck-rewrite" type="checkbox" /> Rewrite
-          <span id="rewrite-n-wrap" style="display:none;">
-            n:
-            <input id="rewrite-n" type="number" min="1" max="5" value="2" />
-          </span>
-        </label>
-        <label class="opt" id="multihop-wrap">
-          <input id="ck-multihop" type="checkbox" /> Multi-hop
-        </label>
-        <label class="opt" id="multihop-depth-wrap" style="display:none;">
-          Depth:
-          <input id="hop-depth" type="number" min="1" max="3" value="2" />
-        </label>
-        <label class="opt" id="multihop-fanout-wrap" style="display:none;">
-          Fanout:
-          <input id="hop-fanout" type="number" min="1" max="3" value="2" />
-        </label>
-        <label class="opt" id="multihop-fanout1-wrap" style="display:none;">
-          Fanout-1st:
-          <input id="hop-fanout1" type="number" min="1" max="5" value="1" />
-        </label>
-        <label class="opt" id="multihop-budget-wrap" style="display:none;">
-          Budget(ms):
-          <input id="hop-budget" type="number" min="0" max="60000" value="0" />
-        </label>
-        <label class="opt">Language:
-          <select id="filter-langs" multiple size="3"></select>
-        </label>
-        <label class="opt">Version:
-          <select id="filter-versions" multiple size="3"></select>
-        </label>
-        <label class="opt">Provider:
-          <select id="provider-select">
-            <option value="ollama" selected>Ollama</option>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>Provider mặc định</label>
+          <select id="settings-provider" class="control">
+            <option value="ollama">Ollama</option>
             <option value="openai">OpenAI</option>
           </select>
-        </label>
-        <label class="opt"><input id="ck-stream" type="checkbox" /> Streaming</label>
-        <button id="btn-ask">Hỏi</button>
-        <span class="feedback-bar" style="margin-left:12px;">
-          <button id="btn-fb-up" title="Tốt">👍</button>
-          <button id="btn-fb-down" title="Chưa tốt">👎</button>
-          <input id="fb-comment" type="text" placeholder="Nhận xét..." style="width:220px;" />
-          <button id="btn-fb-send">Gửi feedback</button>
-        </span>
+        </div>
+        <div class="form-row">
+          <label><input type="checkbox" id="settings-stream-default" /> Streaming mặc định</label>
+        </div>
+        <div class="form-row">
+          <label>Ngôn ngữ ưu tiên (để lọc sẵn)</label>
+          <input id="settings-langs" class="control" placeholder="vd: vi,en" />
+        </div>
       </div>
-      <div id="result" class="result"></div>
-      <div id="contexts" class="contexts"></div>
-      <div id="citations" class="citations"></div>
-      <footer>
-        <small>Provider: <code id="provider-name">ollama</code> | Model: <code id="model-name">llama3.1:8b</code> | Embed: <code id="embed-name">nomic-embed-text</code></small>
-      </footer>
+      <div class="modal-footer">
+        <button id="settings-save" class="btn primary">Lưu</button>
+      </div>
     </div>
+
     <script src="/static/app.js"></script>
   </body>
 </html>

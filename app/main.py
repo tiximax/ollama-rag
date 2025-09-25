@@ -629,6 +629,32 @@ def api_get_filters(db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== Docs APIs =====
+class DocsDeleteRequest(BaseModel):
+    sources: List[str]
+    db: Optional[str] = None
+
+
+@app.get("/api/docs")
+def api_docs_list(db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        return {"db": engine.db_name, "docs": engine.list_sources()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/docs")
+def api_docs_delete(req: DocsDeleteRequest):
+    try:
+        if req.db:
+            engine.use_db(req.db)
+        n = engine.delete_sources(req.sources or [])
+        return {"status": "ok", "deleted_sources": n, "db": engine.db_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ===== Offline Evaluation API =====
 class EvalQueryItem(BaseModel):
     query: str
