@@ -136,6 +136,22 @@ Citations [n]
 - Non-stream: API /api/query trả về metadatas[] cùng answer để render citations.
 - Streaming: server gửi header đặc biệt ở đầu stream: [[CTXJSON]]{json}\n chứa { contexts, metadatas, db } để client render sớm; phần answer stream nối tiếp sau đó.
 
+Citations Export (API nhanh)
+- Theo chat:
+  - JSON: GET /api/citations/chat/{chat_id}?db=<DB>&format=json
+  - CSV:  GET /api/citations/chat/{chat_id}?db=<DB>&format=csv
+  - MD:   GET /api/citations/chat/{chat_id}?db=<DB>&format=md
+- Toàn DB (ZIP nhiều file):
+  - JSON: GET /api/citations/db?db=<DB>&format=json
+  - CSV:  GET /api/citations/db?db=<DB>&format=csv
+  - MD:   GET /api/citations/db?db=<DB>&format=md
+- Lọc nâng cao: thêm query params (dấu phẩy = nhiều giá trị)
+  - sources=a.txt,b.txt (substring match trên metadata.source)
+  - versions=v1,v2 (match chính xác)
+  - languages=vi,en (match chính xác)
+- Ví dụ (PowerShell, JSON per chat):
+  - curl "http://127.0.0.1:8001/api/citations/chat/$($env:CHAT_ID)?db=default&format=json&sources=a.txt&versions=v1&languages=vi"
+
 Query Rewrite (UI + API)
 - UI: bật “Rewrite” và đặt n (1..5). Mặc định tắt để tránh tăng chi phí CPU.
 - Hành vi: sinh n biến thể truy vấn, hợp nhất kết quả retrieval bằng RRF trước khi rerank/sinh câu trả lời.
