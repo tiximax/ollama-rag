@@ -74,3 +74,13 @@ body { font-family: system-ui, Arial, sans-serif; margin: 0; background: #0b1220
 
 /* Legacy rules kept for JS logic compatibility */
 .query input[type="number"] { width: 64px; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: #0e1526; color: var(--text); }
+
+/***** Toasts *****/
+.toasts { position: fixed; top: 14px; right: 14px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+.toast { min-width: 260px; max-width: 480px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: #0e1526; color: var(--text); box-shadow: 0 6px 20px rgba(0,0,0,0.35); opacity: 0.98; }
+.toast.success { border-color: #0b8a3b55; background: #0f2c1b; color: #c8f5d6; }
+.toast.error { border-color: #b91c1c55; background: #2a1212; color: #fecaca; }
+.toast.warn { border-color: #b7791f55; background: #2a1f0f; color: #fde68a; }
+.toast.info { border-color: #1d4ed855; background: #0f1d36; color: #bfdbfe; }
+.toast .close { float: right; cursor: pointer; margin-left: 8px; opacity: 0.8; }
+.toast .close:hover { opacity: 1; }

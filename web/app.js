@@ -1339,6 +1339,34 @@ function resetAdvancedDefaults() {
 
 if (advResetBtn) advResetBtn.addEventListener('click', resetAdvancedDefaults);
 
+// ===== Toast notifications =====
+const _toastContainer = () => {
+  let el = document.getElementById('toasts');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toasts';
+    el.className = 'toasts';
+    document.body.appendChild(el);
+  }
+  return el;
+};
+function toast(message, type = 'info', ms = 4000) {
+  try {
+    const c = _toastContainer();
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.innerHTML = `<span class="msg"></span><span class="close" title="Đóng">✕</span>`;
+    t.querySelector('.msg').textContent = String(message || '');
+    t.querySelector('.close').addEventListener('click', () => { try { c.removeChild(t); } catch {} });
+    c.appendChild(t);
+    setTimeout(() => { try { c.removeChild(t); } catch {} }, ms);
+  } catch (e) {
+    console.warn('toast error', e);
+  }
+}
+// Replace blocking alerts with non-blocking toasts
+try { window.alert = (msg) => toast(msg, 'info'); } catch {}
+
 // Quick Start help
 if (menuHelp) {
   menuHelp.addEventListener('click', () => {
