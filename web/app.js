@@ -644,6 +644,45 @@ function downloadBlob(name, blob) {
   URL.revokeObjectURL(url);
 }
 
+/***** Global progress helpers *****/
+let _pgTimer = null;
+function startProgress(label) {
+  try {
+    const el = document.getElementById('global-progress');
+    const bar = document.getElementById('global-progress-bar');
+    const txt = document.getElementById('global-progress-text');
+    if (!el || !bar || !txt) return;
+    el.hidden = false;
+    bar.style.width = '0%';
+    txt.textContent = label || 'Đang xử lý...';
+    let p = 0;
+    clearInterval(_pgTimer);
+    _pgTimer = setInterval(() => {
+      p = Math.min(p + Math.random() * 8 + 2, 90);
+      bar.style.width = p.toFixed(0) + '%';
+    }, 200);
+  } catch {}
+}
+function stopProgress(doneText) {
+  try {
+    const el = document.getElementById('global-progress');
+    const bar = document.getElementById('global-progress-bar');
+    const txt = document.getElementById('global-progress-text');
+    if (!el || !bar || !txt) return;
+    clearInterval(_pgTimer);
+    bar.style.width = '100%';
+    if (doneText) txt.textContent = doneText;
+    setTimeout(() => { try { el.hidden = true; bar.style.width = '0%'; txt.textContent = ''; } catch {} }, 500);
+  } catch {}
+}
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /***** Busy helpers *****/
 async function withBusy(btn, fn, busyText) {
   let prev;
@@ -702,6 +741,7 @@ function settingsApplyToUI() {
 }
 
 async function uploadAndIngest() {
+  startProgress('Đang ingest file...');
   try {
     const files = fileUploadInput && fileUploadInput.files ? Array.from(fileUploadInput.files) : [];
 if (!files.length) { notifyWarn('Chọn file để upload'); return; }
@@ -713,9 +753,11 @@ if (!files.length) { notifyWarn('Chọn file để upload'); return; }
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || resp.status);
 resultDiv.textContent = `Đã upload ${data.saved.length} file, index ${data.chunks_indexed} chunks.`; notifySuccess(`Ingest thành công: ${data.saved.length} file, ${data.chunks_indexed} chunks`);
-    await loadFilters();
+await loadFilters();
+    stopProgress('Hoàn tất ingest');
   } catch (e) {
-notifyError('Lỗi upload: ' + e);
+    notifyError('Lỗi upload: ' + e);
+    stopProgress('Lỗi');
   }
 }
 
@@ -853,6 +895,7 @@ function _friendlyConnError(e) {
 }
 
 async function ingest() {
+  startProgress('Đang ingest mặc định...');
   resultDiv.textContent = 'Đang index tài liệu...';
   try {
     const payload = { paths: ['data/docs'], db: dbSelect.value || null };
@@ -866,35 +909,46 @@ async function ingest() {
     if (resp.ok) {
       resultDiv.textContent = `Đã index ${data.chunks_indexed} chunks.`;
       await loadFilters();
+      stopProgress('Hoàn tất ingest');
     } else {
       resultDiv.textContent = `Lỗi ingest: ${data.detail}`;
+      stopProgress('Lỗi');
     }
   } catch (e) {
     const msg = _friendlyConnError(e);
     resultDiv.textContent = msg ? msg : `Lỗi kết nối server: ${e}`;
+    stopProgress('Lỗi');
   }
 }
 
 async function ingestByPaths() {
+  startProgress('Đang ingest theo đường dẫn...');
   const raw = (ingestPaths && ingestPaths.value || '').trim();
   if (!raw) {
-    alert('Nhập Paths (có thể là glob, phân tách bằng dấu ,)');
+    notifyWarn('Nhập Paths (có thể là glob, phân tách bằng dấu ,)');
+    stopProgress('Lỗi');
     return;
   }
-  // Cảnh báo nếu có vẻ không hợp lệ (không có dấu * , không có đuôi file, không phải URL)
+  // Pre-check tokens
   try {
-    const suspicious = (!raw.includes('*') && !raw.includes('.') && !/^https?:\/\//i.test(raw));
-    if (suspicious) {
-      const ok = confirm('Chuỗi đường dẫn có vẻ không phải là file pattern hoặc URL. Tiếp tục ingest?');
-      if (!ok) return;
+    const items = raw.split(',').map(s => s.trim()).filter(Boolean);
+    if (items.length > 50) {
+      const ok = confirm(`Có ${items.length} mục. Chỉ nên <= 50. Tiếp tục?`);
+      if (!ok) { stopProgress('Huỷ'); return; }
+    }
+    const invalid = [];
+    for (const it of items) {
+      const isURL = /^https?:\/\//i.test(it);
+      const hasGlob = /[\*\?]/.test(it);
+      const hasExt = /\.[A-Za-z0-9]+$/.test(it);
+      if (!isURL && !hasGlob && !hasExt) invalid.push(it);
+    }
+    if (invalid.length) {
+      const head = invalid.slice(0, 3).join(', ');
+      const ok = confirm(`Một số mục có vẻ không hợp lệ (vd: ${head}${invalid.length>3?'…':''}). Tiếp tục?`);
+      if (!ok) { stopProgress('Huỷ'); return; }
     }
   } catch {}
-  resultDiv.textContent = 'Đang index tài liệu (custom paths)...';
-  const raw = (ingestPaths && ingestPaths.value || '').trim();
-  if (!raw) {
-    alert('Nhập Paths (có thể là glob, phân tách bằng dấu ,)');
-    return;
-  }
   resultDiv.textContent = 'Đang index tài liệu (custom paths)...';
   try {
     const list = raw.split(',').map(s => s.trim()).filter(Boolean);
@@ -909,12 +963,15 @@ async function ingestByPaths() {
     if (resp.ok) {
       resultDiv.textContent = `Đã index ${data.chunks_indexed} chunks.`;
       await loadFilters();
+      stopProgress('Hoàn tất ingest');
     } else {
       resultDiv.textContent = `Lỗi ingest: ${data.detail}`;
+      stopProgress('Lỗi');
     }
   } catch (e) {
     const msg = _friendlyConnError(e);
     resultDiv.textContent = msg ? msg : `Lỗi kết nối server: ${e}`;
+    stopProgress('Lỗi');
   }
 }
 

@@ -18,6 +18,10 @@ body { font-family: system-ui, Arial, sans-serif; margin: 0; background: #0b1220
 .topbar .btn.file input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .topbar .left, .topbar .right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .status { color: var(--muted); margin-left: 8px; }
+/* Progress */
+.progress { position: sticky; top: 76px; z-index: 9; height: 6px; background: #0f1a2c; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; padding-left: 0; }
+.progress .bar { height: 100%; background: linear-gradient(90deg, #3b82f6, #22c55e); transition: width 0.2s ease; }
+.progress .progress-text { margin-left: 8px; font-size: 12px; color: var(--muted); }
 .status.badge { padding: 2px 6px; border-radius: 6px; margin-left: 8px; font-size: 12px; }
 .status.ok { background: #e7f7ee; color: #0b8a3b; border: 1px solid #0b8a3b22; }
 .status.warning { background: #fff8e6; color: #b7791f; border: 1px solid #b7791f22; }
@@ -72,6 +76,10 @@ body { font-family: system-ui, Arial, sans-serif; margin: 0; background: #0b1220
 .footer { margin-top: auto; color: var(--muted); }
 .adv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; align-items: center; }
 .adv-grid .opt { gap: 8px; }
+
+/* Stats grid */
+.stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px; }
+.stats-grid .stat { background: #0c1629; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
 
 /* Legacy rules kept for JS logic compatibility */
 .query input[type="number"] { width: 64px; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: #0e1526; color: var(--text); }
