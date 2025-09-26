@@ -40,7 +40,7 @@ body { font-family: system-ui, Arial, sans-serif; margin: 0; background: #0b1220
 .modal-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
 .form-row { display: flex; gap: 8px; align-items: center; }
 .form-row label { color: var(--muted); min-width: 180px; }
-.panel-title { font-weight: 600; color: #cbd5e1; margin-bottom: 8px; }
+.panel-title { font-weight: 600; color: #cbd5e1; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .panel-actions { margin-top: 8px; display:flex; gap: 8px; }
 
 /***** Lists *****/

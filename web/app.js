@@ -70,6 +70,7 @@ const fbComment = document.getElementById('fb-comment');
 const logsEnableCk = document.getElementById('ck-logs-enable');
 const logsExportBtn = document.getElementById('btn-logs-export');
 const analyticsRefreshBtn = document.getElementById('btn-analytics-refresh');
+const advResetBtn = document.getElementById('btn-adv-reset');
 const anChats = document.getElementById('an-chats');
 // Backend status
 const backendStatus = document.getElementById('backend-status');
@@ -1291,6 +1292,52 @@ if (providerSel) {
     await loadHealth();
   });
 }
+
+function resetAdvancedDefaults() {
+  try {
+    if (topkInput) topkInput.value = '5';
+    if (methodSel) methodSel.value = 'vector';
+
+    if (bm25Range) {
+      bm25Range.value = '0.5';
+      if (bm25Val) bm25Val.textContent = bm25Range.value;
+    }
+    if (bm25Wrap) bm25Wrap.style.display = 'none';
+
+    if (rerankCk) rerankCk.checked = false;
+    if (rerankTopN) rerankTopN.value = '10';
+    if (rrProvider) rrProvider.value = 'auto';
+    if (rrMaxK) rrMaxK.value = '50';
+    if (rrBatch) rrBatch.value = '16';
+    if (rrThreads) rrThreads.value = '1';
+    if (rerankTopWrap) rerankTopWrap.style.display = 'none';
+    if (rerankAdv) rerankAdv.style.display = 'none';
+
+    if (rewriteCk) rewriteCk.checked = false;
+    if (rewriteN) rewriteN.value = '2';
+    if (rewriteNWrap) rewriteNWrap.style.display = 'none';
+
+    if (multihopCk) multihopCk.checked = false;
+    if (hopDepth) hopDepth.value = '2';
+    if (hopFanout) hopFanout.value = '2';
+    if (hopFanout1) hopFanout1.value = '1';
+    if (hopBudget) hopBudget.value = '0';
+    if (multihopDepthWrap) multihopDepthWrap.style.display = 'none';
+    if (multihopFanoutWrap) multihopFanoutWrap.style.display = 'none';
+    if (multihopFanout1Wrap) multihopFanout1Wrap.style.display = 'none';
+    if (multihopBudgetWrap) multihopBudgetWrap.style.display = 'none';
+
+    // Trigger existing change handlers to keep UI consistent
+    if (methodSel) methodSel.dispatchEvent(new Event('change'));
+    if (rerankCk) rerankCk.dispatchEvent(new Event('change'));
+    if (rewriteCk) rewriteCk.dispatchEvent(new Event('change'));
+    if (multihopCk) multihopCk.dispatchEvent(new Event('change'));
+  } catch (e) {
+    console.warn('resetAdvancedDefaults error', e);
+  }
+}
+
+if (advResetBtn) advResetBtn.addEventListener('click', resetAdvancedDefaults);
 
 // Quick Start help
 if (menuHelp) {
