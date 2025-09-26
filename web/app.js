@@ -71,6 +71,10 @@ const logsEnableCk = document.getElementById('ck-logs-enable');
 const logsExportBtn = document.getElementById('btn-logs-export');
 const analyticsRefreshBtn = document.getElementById('btn-analytics-refresh');
 const anChats = document.getElementById('an-chats');
+// Backend status
+const backendStatus = document.getElementById('backend-status');
+// Help menu
+const menuHelp = document.getElementById('menu-help');
 const anQa = document.getElementById('an-qa');
 const anAnswered = document.getElementById('an-answered');
 const anWithCtx = document.getElementById('an-withctx');
@@ -117,6 +121,29 @@ async function loadProvider() {
       if (providerName) providerName.textContent = data.provider;
     }
   } catch {}
+}
+
+async function loadHealth() {
+  try {
+    const resp = await fetch('/api/health');
+    const data = await resp.json();
+    if (backendStatus) {
+      if (resp.ok) {
+        const p = (data.provider || '').toLowerCase();
+        if (p === 'ollama') {
+          backendStatus.textContent = data.ollama && data.ollama.ok ? 'Backend: Ollama OK' : `Backend: Ollama lỗi — ${(data.ollama && data.ollama.error) || 'Không rõ'}`;
+        } else if (p === 'openai') {
+          backendStatus.textContent = data.openai && data.openai.configured ? 'Backend: OpenAI OK' : 'Backend: OpenAI chưa cấu hình';
+        } else {
+          backendStatus.textContent = 'Backend: Không rõ';
+        }
+      } else {
+        backendStatus.textContent = 'Backend: lỗi health API';
+      }
+    }
+  } catch (e) {
+    if (backendStatus) backendStatus.textContent = 'Backend: lỗi kết nối health';
+  }
 }
 
 async function loadFilters() {
@@ -278,6 +305,23 @@ async function deleteSelectedDocs() {
     if (!docList) return;
     const selected = Array.from(docList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
     if (!selected.length) { alert('Chọn ít nhất 1 tài liệu'); return; }
+    if (!confirm(`Xóa ${selected.length} tài liệu đã chọn?`)) return;
+    const resp = await fetch('/api/docs', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ db: dbSelect.value || null, sources: selected })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không xóa được');
+    await loadDocs();
+  } catch (e) {
+    alert('Lỗi xóa tài liệu: ' + e);
+  }
+}
+  try {
+    if (!docList) return;
+    const selected = Array.from(docList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+    if (!selected.length) { alert('Chọn ít nhất 1 tài liệu'); return; }
     const resp = await fetch('/api/docs', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -330,6 +374,18 @@ async function createDb() {
 }
 
 async function deleteDb() {
+  const name = dbSelect.value;
+  if (!name) return;
+  if (!confirm(`Xóa DB '${name}'? Hành động này không thể hoàn tác.`)) return;
+  try {
+    const resp = await fetch('/api/dbs/' + encodeURIComponent(name), { method: 'DELETE' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Không thể xóa DB');
+    await loadDbs();
+  } catch (e) {
+    alert('Lỗi xóa DB: ' + e);
+  }
+}
   const name = dbSelect.value;
   if (!name) return;
   try {
@@ -735,6 +791,16 @@ function renderCitations(answerText, metas) {
   } catch {}
 }
 
+function _friendlyConnError(e) {
+  try {
+    const s = String(e || '');
+    if (s.includes('11434') || s.toLowerCase().includes('failed to establish a new connection')) {
+      return 'Không kết nối được tới dịch vụ embedding (Ollama). Hãy chạy "ollama serve" hoặc đổi Provider sang OpenAI trong Cài đặt.';
+    }
+  } catch {}
+  return null;
+}
+
 async function ingest() {
   resultDiv.textContent = 'Đang index tài liệu...';
   try {
@@ -753,11 +819,26 @@ async function ingest() {
       resultDiv.textContent = `Lỗi ingest: ${data.detail}`;
     }
   } catch (e) {
-    resultDiv.textContent = `Lỗi kết nối server: ${e}`;
+    const msg = _friendlyConnError(e);
+    resultDiv.textContent = msg ? msg : `Lỗi kết nối server: ${e}`;
   }
 }
 
 async function ingestByPaths() {
+  const raw = (ingestPaths && ingestPaths.value || '').trim();
+  if (!raw) {
+    alert('Nhập Paths (có thể là glob, phân tách bằng dấu ,)');
+    return;
+  }
+  // Cảnh báo nếu có vẻ không hợp lệ (không có dấu * , không có đuôi file, không phải URL)
+  try {
+    const suspicious = (!raw.includes('*') && !raw.includes('.') && !/^https?:\/\//i.test(raw));
+    if (suspicious) {
+      const ok = confirm('Chuỗi đường dẫn có vẻ không phải là file pattern hoặc URL. Tiếp tục ingest?');
+      if (!ok) return;
+    }
+  } catch {}
+  resultDiv.textContent = 'Đang index tài liệu (custom paths)...';
   const raw = (ingestPaths && ingestPaths.value || '').trim();
   if (!raw) {
     alert('Nhập Paths (có thể là glob, phân tách bằng dấu ,)');
@@ -781,7 +862,8 @@ async function ingestByPaths() {
       resultDiv.textContent = `Lỗi ingest: ${data.detail}`;
     }
   } catch (e) {
-    resultDiv.textContent = `Lỗi kết nối server: ${e}`;
+    const msg = _friendlyConnError(e);
+    resultDiv.textContent = msg ? msg : `Lỗi kết nối server: ${e}`;
   }
 }
 
@@ -859,7 +941,8 @@ async function ask() {
       }
     }
   } catch (e) {
-    resultDiv.textContent = `Lỗi kết nối server: ${e}`;
+    const msg = _friendlyConnError(e);
+    resultDiv.textContent = msg ? msg : `Lỗi kết nối server: ${e}`;
   }
 }
 
@@ -1010,7 +1093,7 @@ function escapeHtml(str) {
 if (ingestBtn) ingestBtn.addEventListener('click', ingest);
 askBtn.addEventListener('click', ask);
 
-dbSelect.addEventListener('change', async () => {
+if (dbSelect) dbSelect.addEventListener('change', async () => {
   const name = dbSelect.value;
   if (name) await useDb(name);
   await loadChats();
@@ -1022,17 +1105,17 @@ dbSelect.addEventListener('change', async () => {
   await loadLogsSummary();
 });
 
-dbCreateBtn.addEventListener('click', async () => { await createDb(); await loadChats(); });
-dbDeleteBtn.addEventListener('click', async () => { await deleteDb(); await loadChats(); });
-chatNewBtn.addEventListener('click', createChat);
-chatRenameBtn.addEventListener('click', renameChat);
-chatDeleteBtn.addEventListener('click', deleteChat);
-chatDeleteAllBtn.addEventListener('click', deleteAllChats);
-chatExportJsonBtn.addEventListener('click', () => exportChat('json'));
-chatExportMdBtn.addEventListener('click', () => exportChat('md'));
-chatExportDbJsonBtn.addEventListener('click', () => exportDb('json'));
-chatExportDbMdBtn.addEventListener('click', () => exportDb('md'));
-chatSearchBtn.addEventListener('click', searchChats);
+if (dbCreateBtn) dbCreateBtn.addEventListener('click', async () => { await createDb(); await loadChats(); });
+if (dbDeleteBtn) dbDeleteBtn.addEventListener('click', async () => { await deleteDb(); await loadChats(); });
+if (chatNewBtn) chatNewBtn.addEventListener('click', createChat);
+if (chatRenameBtn) chatRenameBtn.addEventListener('click', renameChat);
+if (chatDeleteBtn) chatDeleteBtn.addEventListener('click', deleteChat);
+if (chatDeleteAllBtn) chatDeleteAllBtn.addEventListener('click', deleteAllChats);
+if (chatExportJsonBtn) chatExportJsonBtn.addEventListener('click', () => exportChat('json'));
+if (chatExportMdBtn) chatExportMdBtn.addEventListener('click', () => exportChat('md'));
+if (chatExportDbJsonBtn) chatExportDbJsonBtn.addEventListener('click', () => exportDb('json'));
+if (chatExportDbMdBtn) chatExportDbMdBtn.addEventListener('click', () => exportDb('md'));
+if (chatSearchBtn) chatSearchBtn.addEventListener('click', searchChats);
 if (ingestPathsBtn) ingestPathsBtn.addEventListener('click', ingestByPaths);
 if (uploadBtn) uploadBtn.addEventListener('click', uploadAndIngest);
 if (evalRunBtn) evalRunBtn.addEventListener('click', runEval);
@@ -1044,7 +1127,7 @@ if (logsExportBtn) logsExportBtn.addEventListener('click', exportLogs);
 if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', loadAnalytics);
 if (logsSummaryBtn) logsSummaryBtn.addEventListener('click', loadLogsSummary);
 if (docDeleteBtn) docDeleteBtn.addEventListener('click', deleteSelectedDocs);
-if (reloadBtn) reloadBtn.addEventListener('click', async () => { await loadDbs(); await loadChats(); await loadFilters(); await loadDocs(); settingsApplyToUI(); await loadLogsInfo(); await loadAnalytics(); await loadLogsSummary(); });
+if (reloadBtn) reloadBtn.addEventListener('click', async () => { await loadDbs(); await loadChats(); await loadFilters(); await loadDocs(); settingsApplyToUI(); await loadLogsInfo(); await loadAnalytics(); await loadLogsSummary(); await loadHealth(); });
 
 // Settings events
 if (menuSettings && settingsOverlay && settingsModal && settingsClose && settingsSave) {
@@ -1112,6 +1195,7 @@ loadProvider().then(() => loadDbs().then(async () => {
   await loadLogsInfo();
   await loadAnalytics();
   await loadLogsSummary();
+  await loadHealth();
 }));
 
 if (methodSel) {
@@ -1155,5 +1239,13 @@ if (rewriteCk) {
 if (providerSel) {
   providerSel.addEventListener('change', async () => {
     await setProvider(providerSel.value);
+    await loadHealth();
+  });
+}
+
+// Quick Start help
+if (menuHelp) {
+  menuHelp.addEventListener('click', () => {
+    alert('Bắt đầu nhanh:\n1) Chạy Ollama: ollama serve\n2) Tải model: ollama pull nomic-embed-text và ollama pull llama3.1:8b\n3) Ingest tài liệu ở thanh trên, rồi Gửi câu hỏi\nHoặc đổi Provider sang OpenAI trong Cài đặt nếu có OPENAI_API_KEY.');
   });
 }

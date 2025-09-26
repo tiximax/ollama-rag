@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ollama RAG App</title>
     <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="icon" href="/static/favicon.ico" />
   </head>
   <body>
     <div class="ui-root">
@@ -33,6 +34,7 @@
           <button id="btn-reload" class="btn">Tải lại</button>
           <button id="btn-chat-export-db-json" class="btn">Export DB...</button>
           <span id="db-status" class="status"></span>
+          <span id="backend-status" class="status"></span>
         </div>
       </div>
 
@@ -115,6 +117,6 @@
       </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20250926-01"></script>
   </body>
 </html>

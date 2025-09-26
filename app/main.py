@@ -1177,6 +1177,36 @@ def api_set_provider(req: ProviderName):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== Health API =====
+@app.get("/api/health")
+def api_health():
+    """Trả trạng thái backend hiện tại: Ollama/OpenAI và DB."""
+    try:
+        from .ollama_client import OLLAMA_BASE_URL  # type: ignore
+        import requests  # type: ignore
+        status = {
+            "provider": engine.default_provider,
+            "db": engine.db_name,
+            "ollama": {"base_url": OLLAMA_BASE_URL, "ok": False, "error": None},
+            "openai": {"configured": False, "ok": False, "error": None},
+        }
+        # Check Ollama
+        try:
+            r = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3)
+            status["ollama"]["ok"] = bool(r.ok)
+            if not r.ok:
+                status["ollama"]["error"] = f"HTTP {r.status_code}"
+        except Exception as e:
+            status["ollama"]["error"] = str(e)
+        # Check OpenAI config
+        import os as _os
+        if (_os.getenv("OPENAI_API_KEY") or "").strip():
+            status["openai"]["configured"] = True
+            status["openai"]["ok"] = True
+        return status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ===== Feedback APIs =====
 class FeedbackItem(BaseModel):
     db: Optional[str] = None
