@@ -101,6 +101,8 @@ const docDeleteBtn = document.getElementById('btn-docs-delete');
 const chatList = document.getElementById('chat-list');
 const reloadBtn = document.getElementById('btn-reload');
 const dbStatus = document.getElementById('db-status');
+const statsToggleBtn = document.getElementById('btn-stats-toggle');
+const statsBody = document.getElementById('stats-body');
 // Settings UI
 const menuSettings = document.getElementById('menu-settings');
 const settingsOverlay = document.getElementById('settings-overlay');
@@ -654,12 +656,15 @@ function startProgress(label) {
     if (!el || !bar || !txt) return;
     el.hidden = false;
     bar.style.width = '0%';
-    txt.textContent = label || 'Đang xử lý...';
+    let base = label || 'Đang xử lý...';
+    txt.textContent = base;
     let p = 0;
     clearInterval(_pgTimer);
     _pgTimer = setInterval(() => {
       p = Math.min(p + Math.random() * 8 + 2, 90);
-      bar.style.width = p.toFixed(0) + '%';
+      const pct = p.toFixed(0) + '%';
+      bar.style.width = pct;
+      txt.textContent = base + ' ' + '(' + pct + ')';
     }, 200);
   } catch {}
 }
@@ -1438,6 +1443,7 @@ function uiCollect() {
       fanout1: hopFanout1 ? String(hopFanout1.value || '1') : undefined,
       budget: hopBudget ? String(hopBudget.value || '0') : undefined,
       stream: streamCk ? !!streamCk.checked : undefined,
+      stats_collapsed: statsBody ? !!statsBody.hidden : undefined,
     };
   } catch { return {}; }
 }
@@ -1465,6 +1471,7 @@ function uiLoad() {
     if (s.fanout1 && hopFanout1) hopFanout1.value = String(s.fanout1);
     if (s.budget && hopBudget) hopBudget.value = String(s.budget);
     if (typeof s.stream === 'boolean' && streamCk) streamCk.checked = !!s.stream;
+    if (typeof s.stats_collapsed === 'boolean' && statsBody) statsBody.hidden = !!s.stats_collapsed;
     // Trigger change handlers to sync visibility
     if (methodSel) methodSel.dispatchEvent(new Event('change'));
     if (rerankCk) rerankCk.dispatchEvent(new Event('change'));
@@ -1477,6 +1484,9 @@ function uiLoad() {
 function bindUiAutosave() {
   const bind = (el, evt='change') => { if (!el) return; el.addEventListener(evt, uiSave); };
   [topkInput, methodSel, bm25Range, rerankCk, rerankTopN, rrProvider, rrMaxK, rrBatch, rrThreads, rewriteCk, rewriteN, multihopCk, hopDepth, hopFanout, hopFanout1, hopBudget, streamCk].forEach(e => bind(e));
+  if (statsToggleBtn && statsBody) {
+    statsToggleBtn.addEventListener('click', () => { try { statsBody.hidden = !statsBody.hidden; uiSave(); } catch {} });
+  }
 }
 
 // ===== Toast notifications =====

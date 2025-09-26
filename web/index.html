@@ -66,8 +66,9 @@
           <!-- Hidden select to keep compatibility with existing JS logic -->
           <select id="chat-select" style="display:none;"></select>
 
-          <div class="panel">
-            <div class="panel-title">📊 Thống kê nhanh</div>
+<div class="panel">
+            <div class="panel-title">📊 Thống kê nhanh <button id="btn-stats-toggle" class="btn" title="Thu gọn/mở rộng">▾</button></div>
+            <div id="stats-body">
             <div class="stats-grid">
               <div class="stat"><span class="muted">Chats</span> <strong id="an-chats">-</strong></div>
               <div class="stat"><span class="muted">Q/A</span> <strong id="an-qa">-</strong></div>
@@ -82,6 +83,7 @@
             <ul id="an-top-versions" class="list"></ul>
             <div class="panel-title muted" style="margin-top:6px">Ngôn ngữ nhiều nhất</div>
             <ul id="an-top-langs" class="list"></ul>
+            </div>
           </div>
         </aside>
 
