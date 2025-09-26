@@ -215,7 +215,7 @@ async function setLogsEnabled(enabled) {
       throw new Error(data.detail || resp.status);
     }
   } catch (e) {
-    alert('Không thể bật/tắt logs: ' + e);
+notifyError('Không thể bật/tắt logs: ' + e);
   }
 }
 
@@ -229,7 +229,7 @@ async function exportLogs() {
     const name = `logs-${dbSelect.value || 'default'}.jsonl`;
     downloadFile(name, text, 'application/jsonl');
   } catch (e) {
-    alert('Lỗi export logs: ' + e);
+notifyError('Lỗi export logs: ' + e);
   }
 }
 
@@ -245,7 +245,7 @@ async function setProvider(name) {
       if (providerName) providerName.textContent = data.provider || name;
     }
   } catch (e) {
-    alert('Lỗi đổi provider: ' + e);
+notifyError('Lỗi đổi provider: ' + e);
   }
 }
 
@@ -340,7 +340,7 @@ async function deleteSelectedDocs() {
     if (!resp.ok) throw new Error(data.detail || 'Không xóa được');
     await loadDocs();
   } catch (e) {
-    alert('Lỗi xóa tài liệu: ' + e);
+notifyError('Lỗi xóa tài liệu: ' + e);
   }
 }
   try {
@@ -371,7 +371,7 @@ async function useDb(name) {
     if (!resp.ok) throw new Error(data.detail || 'Không thể đổi DB');
     await loadDbs();
   } catch (e) {
-    alert('Lỗi đổi DB: ' + e);
+notifyError('Lỗi đổi DB: ' + e);
   }
 }
 
@@ -406,9 +406,9 @@ async function deleteDb() {
     const resp = await fetch('/api/dbs/' + encodeURIComponent(name), { method: 'DELETE' });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || 'Không thể xóa DB');
-    await loadDbs();
+await loadDbs(); notifySuccess('Đã xóa DB: ' + name);
   } catch (e) {
-    alert('Lỗi xóa DB: ' + e);
+notifyError('Lỗi xóa DB: ' + e);
   }
 }
   const name = dbSelect.value;
@@ -419,7 +419,7 @@ async function deleteDb() {
     if (!resp.ok) throw new Error(data.detail || 'Không thể xóa DB');
     await loadDbs();
   } catch (e) {
-    alert('Lỗi xóa DB: ' + e);
+notifyError('Lỗi xóa DB: ' + e);
   }
 }
 
@@ -464,10 +464,10 @@ async function createChat() {
     if (!resp.ok) throw new Error(data.detail || 'Không tạo được chat');
     await loadChats();
     if (data.chat && data.chat.id) {
-      chatSelect.value = data.chat.id;
+chatSelect.value = data.chat.id; notifySuccess('Đã tạo hội thoại');
     }
   } catch (e) {
-    alert('Lỗi tạo chat: ' + e);
+notifyError('Lỗi tạo chat: ' + e);
   }
 }
 
@@ -489,7 +489,7 @@ async function renameChat() {
     await loadChats();
     chatSelect.value = id;
   } catch (e) {
-    alert('Lỗi rename chat: ' + e);
+notifyError('Lỗi đổi tên hội thoại: ' + e);
   }
 }
 
@@ -518,9 +518,9 @@ async function deleteAllChats() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || 'Không xóa được');
     await loadChats();
-    alert(`Đã xóa ${data.deleted} chats.`);
+notifySuccess(`Đã xóa ${data.deleted} chats.`);
   } catch (e) {
-    alert('Lỗi xóa tất cả: ' + e);
+notifyError('Lỗi xóa tất cả: ' + e);
   }
 }
 
@@ -703,7 +703,7 @@ function settingsApplyToUI() {
 async function uploadAndIngest() {
   try {
     const files = fileUploadInput && fileUploadInput.files ? Array.from(fileUploadInput.files) : [];
-    if (!files.length) { alert('Chọn file để upload'); return; }
+if (!files.length) { notifyWarn('Chọn file để upload'); return; }
     const fd = new FormData();
     files.forEach(f => fd.append('files', f));
     if (dbSelect.value) fd.append('db', dbSelect.value);
@@ -711,16 +711,16 @@ async function uploadAndIngest() {
     const resp = await fetch('/api/upload', { method: 'POST', body: fd });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || resp.status);
-    resultDiv.textContent = `Đã upload ${data.saved.length} file, index ${data.chunks_indexed} chunks.`;
+resultDiv.textContent = `Đã upload ${data.saved.length} file, index ${data.chunks_indexed} chunks.`; notifySuccess(`Ingest thành công: ${data.saved.length} file, ${data.chunks_indexed} chunks`);
     await loadFilters();
   } catch (e) {
-    alert('Lỗi upload: ' + e);
+notifyError('Lỗi upload: ' + e);
   }
 }
 
 async function exportChat(format) {
   const id = chatSelect.value;
-  if (!id) { alert('Chưa chọn chat'); return; }
+if (!id) { notifyWarn('Chưa chọn chat'); return; }
   try {
     const params = new URLSearchParams();
     if (dbSelect.value) params.set('db', dbSelect.value);
@@ -738,14 +738,14 @@ async function exportChat(format) {
 downloadFile(`chat-${id}.md`, text, 'text/markdown');
     }
   } catch (e) {
-    alert('Lỗi export: ' + e);
+notifyError('Lỗi export: ' + e);
   }
 }
 
 async function sendFeedback() {
   try {
     const score = gFbScore;
-    if (!score) { alert('Chọn 👍 hoặc 👎 trước khi gửi'); return; }
+if (!score) { notifyWarn('Chọn 👍 hoặc 👎 trước khi gửi'); return; }
     const provider = providerSel ? providerSel.value : undefined;
     const method = methodSel ? methodSel.value : undefined;
     const k = parseInt(topkInput.value || '5', 10);
@@ -777,9 +777,9 @@ async function sendFeedback() {
     }
     if (fbComment) fbComment.value = '';
     gFbScore = 0;
-    alert('Đã gửi feedback!');
+notifySuccess('Đã gửi feedback!');
   } catch (e) {
-    alert('Lỗi gửi feedback: ' + e);
+notifyError('Lỗi gửi feedback: ' + e);
   }
 }
 
@@ -795,13 +795,13 @@ async function exportDb(format) {
     const name = `db-${dbSelect.value || 'default'}-${format}.zip`;
     downloadBlob(name, blob);
   } catch (e) {
-    alert('Lỗi export DB: ' + e);
+notifyError('Lỗi export DB: ' + e);
   }
 }
 
 async function searchChats() {
   const q = (chatSearchInput.value || '').trim();
-  if (!q) { alert('Nhập từ khóa'); return; }
+if (!q) { notifyWarn('Nhập từ khóa'); return; }
   try {
     const params = new URLSearchParams();
     if (dbSelect.value) params.set('db', dbSelect.value);
@@ -812,7 +812,7 @@ async function searchChats() {
     const results = data.results || [];
     resultDiv.textContent = `Search '${q}': ${results.length} chats có kết quả.`;
   } catch (e) {
-    alert('Lỗi search: ' + e);
+notifyError('Lỗi search: ' + e);
   }
 }
 
@@ -1216,7 +1216,7 @@ if (citationsChatBtn) citationsChatBtn.addEventListener('click', async () => {
     if (!resp.ok) throw new Error('Export citations lỗi');
     const text = await resp.text();
     downloadFile(`citations-${id}.json`, text, 'application/json');
-  } catch (e) { alert('Lỗi export citations: ' + e); }
+} catch (e) { notifyError('Lỗi export citations: ' + e); }
 });
 if (citationsDbBtn) citationsDbBtn.addEventListener('click', async () => {
   try {
@@ -1232,7 +1232,7 @@ if (citationsDbBtn) citationsDbBtn.addEventListener('click', async () => {
     const blob = new Blob([buf], { type: 'application/zip' });
     const name = `citations-${dbSelect.value || 'default'}.zip`;
     downloadBlob(name, blob);
-  } catch (e) { alert('Lỗi export citations DB: ' + e); }
+} catch (e) { notifyError('Lỗi export citations DB: ' + e); }
 });
 
 // init
@@ -1366,6 +1366,10 @@ function toast(message, type = 'info', ms = 4000) {
 }
 // Replace blocking alerts with non-blocking toasts
 try { window.alert = (msg) => toast(msg, 'info'); } catch {}
+// Toast helpers
+function notifyError(msg) { try { toast(msg, 'error', 6000); } catch {} }
+function notifySuccess(msg) { try { toast(msg, 'success', 3500); } catch {} }
+function notifyWarn(msg) { try { toast(msg, 'warn', 4000); } catch {} }
 
 // Quick Start help
 if (menuHelp) {
