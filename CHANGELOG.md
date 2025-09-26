@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.3.0] - 2025-09-26
+
 ### Added
 - Lightweight UI-mocked Playwright tests to harden key flows without heavy backend work:
   - Multihop (UI) non-stream payload validation
