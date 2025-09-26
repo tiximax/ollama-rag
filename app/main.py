@@ -629,6 +629,32 @@ def api_get_filters(db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== Docs APIs =====
+class DocsDeleteRequest(BaseModel):
+    sources: List[str]
+    db: Optional[str] = None
+
+
+@app.get("/api/docs")
+def api_docs_list(db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        return {"db": engine.db_name, "docs": engine.list_sources()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/docs")
+def api_docs_delete(req: DocsDeleteRequest):
+    try:
+        if req.db:
+            engine.use_db(req.db)
+        n = engine.delete_sources(req.sources or [])
+        return {"status": "ok", "deleted_sources": n, "db": engine.db_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ===== Offline Evaluation API =====
 class EvalQueryItem(BaseModel):
     query: str
@@ -756,8 +782,8 @@ def api_logs_export(db: Optional[str] = None, since: Optional[str] = None, until
         if db:
             engine.use_db(db)
         content = exp_logger.export(engine.db_name, since=since, until=until)
-        from datetime import datetime as _dt
-        ts = _dt.utcnow().strftime("%Y%m%d-%H%M%S")
+        from datetime import datetime as _dt, timezone as _tz
+        ts = _dt.now(_tz.utc).strftime("%Y%m%d-%H%M%S")
         filename = f"logs-{engine.db_name}-{ts}.jsonl"
         return Response(content=content, media_type="application/jsonl", headers={
             "Content-Disposition": f"attachment; filename={filename}"
@@ -1148,6 +1174,93 @@ def api_set_provider(req: ProviderName):
         return {"provider": engine.default_provider}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Health API =====
+@app.get("/api/health")
+def api_health():
+    """Trả trạng thái backend mở rộng: Ollama/OpenAI, models, và gợi ý khắc phục."""
+    try:
+        from .ollama_client import OLLAMA_BASE_URL, LLM_MODEL, EMBED_MODEL  # type: ignore
+        import requests  # type: ignore
+        import os as _os
+        
+        status = {
+            "provider": engine.default_provider,
+            "db": engine.db_name,
+            "overall_status": "unknown",  # ok, warning, error
+            "message": "",
+            "suggestions": [],
+            "ollama": {
+                "base_url": OLLAMA_BASE_URL,
+                "ok": False,
+                "error": None,
+                "models": {"available": [], "required": [LLM_MODEL, EMBED_MODEL], "missing": []}
+            },
+            "openai": {"configured": False, "ok": False, "error": None},
+        }
+        
+        # Check Ollama
+        try:
+            r = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3)
+            if r.ok:
+                status["ollama"]["ok"] = True
+                try:
+                    tags_data = r.json()
+                    available_models = [m.get("name", "").split(":")[0] for m in tags_data.get("models", [])]
+                    status["ollama"]["models"]["available"] = list(set(available_models))
+                    
+                    # Check required models
+                    required = [LLM_MODEL.split(":")[0], EMBED_MODEL.split(":")[0]]
+                    missing = [m for m in required if m not in available_models]
+                    status["ollama"]["models"]["missing"] = missing
+                    
+                    if missing:
+                        status["ollama"]["error"] = f"Thiếu models: {', '.join(missing)}"
+                        status["ollama"]["ok"] = False
+                except Exception:
+                    status["ollama"]["error"] = "Không đọc được danh sách models"
+                    status["ollama"]["ok"] = False
+            else:
+                status["ollama"]["error"] = f"HTTP {r.status_code}"
+        except Exception as e:
+            status["ollama"]["error"] = str(e)
+        
+        # Check OpenAI config
+        if (_os.getenv("OPENAI_API_KEY") or "").strip():
+            status["openai"]["configured"] = True
+            status["openai"]["ok"] = True
+        
+        # Determine overall status and suggestions
+        provider = status["provider"].lower()
+        if provider == "ollama":
+            if status["ollama"]["ok"]:
+                status["overall_status"] = "ok"
+                status["message"] = "Ollama sẵn sàng"
+            elif "Thiếu models" in (status["ollama"].get("error") or ""):
+                status["overall_status"] = "warning"
+                status["message"] = "Ollama thiếu models"
+                missing = status["ollama"]["models"]["missing"]
+                status["suggestions"] = [f"Chạy: ollama pull {m}" for m in missing]
+            else:
+                status["overall_status"] = "error"
+                status["message"] = "Ollama không khả dụng"
+                status["suggestions"] = ["Chạy: ollama serve", "Hoặc đổi Provider sang OpenAI"]
+        elif provider == "openai":
+            if status["openai"]["ok"]:
+                status["overall_status"] = "ok"
+                status["message"] = "OpenAI sẵn sàng"
+            else:
+                status["overall_status"] = "error"
+                status["message"] = "OpenAI chưa cấu hình"
+                status["suggestions"] = ["Set biến môi trường OPENAI_API_KEY", "Hoặc đổi Provider sang Ollama"]
+        else:
+            status["overall_status"] = "error"
+            status["message"] = "Provider không hợp lệ"
+            status["suggestions"] = ["Chọn Provider: Ollama hoặc OpenAI"]
+        
+        return status
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

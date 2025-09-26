@@ -1,0 +1,75 @@
+name: e2e-heavy
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC nightly
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-heavy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  e2e-heavy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      LLM_MODEL: tinyllama
+      OLLAMA_NUM_THREAD: '2'
+      OLLAMA_NUM_CTX: '1024'
+      OLLAMA_NUM_GPU: '0'
+      ORT_INTRA_OP_THREADS: '1'
+      ORT_INTER_OP_THREADS: '1'
+      UVICORN_RELOAD: '0'
+      RRF_ENABLE: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Install npm deps
+        run: npm install
+
+      - name: Install Playwright browsers & deps
+        run: npx playwright install --with-deps
+
+      - name: Install Ollama (Linux)
+        shell: bash
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          nohup ollama serve >/dev/null 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
+              echo "Ollama up"; break; fi; sleep 1; done
+
+      - name: Pull models (heavy defaults)
+        run: |
+          ollama pull tinyllama
+          ollama pull nomic-embed-text
+
+      - name: Run Playwright e2e (heavy)
+        run: npx playwright test --config=playwright.ci.config.js --grep @heavy
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: |
+            test-results
+            **/trace.zip

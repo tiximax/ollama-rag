@@ -15,7 +15,7 @@ async function switchDb(page, name) {
   await page.selectOption('#db-select', name);
 }
 
-test.describe('RAG e2e - MultiDB', () => {
+test.describe('RAG e2e - MultiDB @heavy', () => {
   test('DB1 có dữ liệu, DB2 trống, chuyển qua lại hoạt động', async ({ page }) => {
     await page.goto('/');
 
