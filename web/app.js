@@ -274,9 +274,15 @@ async function loadDocs() {
     const resp = await fetch('/api/docs?' + params.toString());
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || 'Không tải được danh sách tài liệu');
-    if (docList) {
+if (docList) {
       docList.innerHTML = '';
       const docs = data.docs || [];
+      if (!docs.length) {
+        const li = document.createElement('li');
+        li.className = 'empty muted';
+        li.textContent = 'Chưa có tài liệu. Dùng "Thêm vào DB" hoặc "Ingest file" để nạp nội dung.';
+        docList.appendChild(li);
+      }
       docs.forEach(item => {
         const li = document.createElement('li');
         const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = item.source;
@@ -296,6 +302,16 @@ async function loadDocs() {
 }
 
 function renderChatList(chats) {
+  if (!chatList) return;
+  chatList.innerHTML = '';
+  if (!chats || !chats.length) {
+    const li = document.createElement('li');
+    li.className = 'empty muted';
+    li.textContent = 'Chưa có hội thoại. Bấm "Hội thoại mới" để bắt đầu.';
+    chatList.appendChild(li);
+    return;
+  }
+  (chats || []).forEach(c => {
   if (!chatList) return;
   chatList.innerHTML = '';
   (chats || []).forEach(c => {

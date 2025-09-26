@@ -18,21 +18,21 @@
       <div class="topbar">
         <div class="left">
           <span class="label">Vector DB:</span>
-          <select id="db-select" class="control"></select>
-          <input id="db-new-name" class="control" type="text" placeholder="Tên DB mới" />
-          <button id="btn-db-create" class="btn">DB mới</button>
-          <button id="btn-db-delete" class="btn danger">Xóa DB</button>
+<select id="db-select" class="control" title="Chọn cơ sở dữ liệu (Vector DB)"></select>
+<input id="db-new-name" class="control" type="text" placeholder="Tên DB mới" title="Nhập tên DB (chỉ chữ/số/._-)" />
+<button id="btn-db-create" class="btn" title="Tạo DB mới">DB mới</button>
+<button id="btn-db-delete" class="btn danger" title="Xóa DB hiện tại (không thể hoàn tác)">Xóa DB</button>
         </div>
         <div class="right">
-          <input id="ingest-paths" class="control wide" type="text" placeholder="Đường dẫn hoặc URL (ví dụ data/docs/*.txt)" />
-          <button id="btn-ingest-paths" class="btn">Thêm vào DB</button>
-          <label class="btn file">
+<input id="ingest-paths" class="control wide" type="text" placeholder="Đường dẫn hoặc URL (ví dụ data/docs/*.txt)" title="Hỗ trợ pattern *.txt, phân tách bằng dấu phẩy, hoặc nhập URL" />
+<button id="btn-ingest-paths" class="btn" title="Thêm tài liệu từ đường dẫn/URL vào DB">Thêm vào DB</button>
+<label class="btn file" title="Chọn file .txt, .pdf, .docx để ingest">
             Chọn file...
             <input id="file-upload" type="file" multiple accept=".txt,.pdf,.docx" hidden />
           </label>
-          <button id="btn-upload" class="btn">Ingest file</button>
-          <button id="btn-reload" class="btn">Tải lại</button>
-          <button id="btn-chat-export-db-json" class="btn">Export DB...</button>
+<button id="btn-upload" class="btn" title="Ingest các file đã chọn vào DB">Ingest file</button>
+<button id="btn-reload" class="btn" title="Tải lại danh sách DB, tài liệu và hội thoại">Tải lại</button>
+<button id="btn-chat-export-db-json" class="btn" title="Xuất toàn bộ hội thoại của DB thành ZIP (JSON)">Export DB (ZIP)</button>
           <span id="db-status" class="status"></span>
           <span id="backend-status" class="status"></span>
         </div>
@@ -66,21 +66,21 @@
         <main class="main">
           <div class="panel">
             <div class="panel-title">Hỏi - Đáp</div>
-            <div id="result" class="result" style="min-height: 160px;"></div>
+<div id="result" class="result" style="min-height: 160px;">Nhập câu hỏi rồi bấm Gửi để bắt đầu. 💡</div>
             <div id="contexts" class="contexts"></div>
             <div id="citations" class="citations"></div>
           </div>
           <div class="query-row">
-            <input id="txt-query" type="text" placeholder="Nhập câu hỏi..." class="query-input" />
-            <button id="btn-ask" class="btn primary">Gửi</button>
-            <label class="opt"><input id="ck-save-chat" type="checkbox" checked /> Lưu hội thoại</label>
+<input id="txt-query" type="text" placeholder="Nhập câu hỏi... (vd: 'Hướng dẫn cài đặt?')" class="query-input" title="Câu hỏi để truy vấn RAG" />
+<button id="btn-ask" class="btn primary" title="Gửi truy vấn tới backend">Gửi</button>
+<label class="opt" title="Lưu cặp Hỏi/Đáp vào lịch sử"><input id="ck-save-chat" type="checkbox" checked /> Lưu hội thoại</label>
             <label class="opt">Provider:
-              <select id="provider-select" class="control">
+<select id="provider-select" class="control" title="Chọn dịch vụ sinh câu trả lời">
                 <option value="ollama" selected>Ollama</option>
                 <option value="openai">OpenAI</option>
               </select>
             </label>
-            <label class="opt"><input id="ck-stream" type="checkbox" /> Streaming</label>
+<label class="opt" title="Hiển thị câu trả lời theo luồng"><input id="ck-stream" type="checkbox" /> Streaming</label>
           </div>
           <footer class="footer">
             <small>Provider: <code id="provider-name">ollama</code> | Model: <code id="model-name">llama3.1:8b</code> | Embed: <code id="embed-name">nomic-embed-text</code></small>
