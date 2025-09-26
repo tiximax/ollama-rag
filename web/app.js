@@ -108,6 +108,7 @@ const docsBody = document.getElementById('docs-body');
 const docFilter = document.getElementById('doc-filter');
 const chatsToggleBtn = document.getElementById('btn-chats-toggle');
 const chatsBody = document.getElementById('chats-body');
+const chatFilter = document.getElementById('chat-filter');
 // Settings UI
 const menuSettings = document.getElementById('menu-settings');
 const settingsOverlay = document.getElementById('settings-overlay');
@@ -317,6 +318,10 @@ const span = document.createElement('span'); span.className = 'title'; span.text
 function renderChatList(chats) {
   if (!chatList) return;
   chatList.innerHTML = '';
+  const term = (chatFilter && chatFilter.value || '').trim().toLowerCase();
+  if (Array.isArray(chats) && term) {
+    chats = chats.filter(c => String((c && (c.name || c.id)) || '').toLowerCase().includes(term));
+  }
   if (!chats || !chats.length) {
     const li = document.createElement('li');
     li.className = 'empty muted';
@@ -1459,6 +1464,7 @@ function uiCollect() {
       docs_collapsed: docsBody ? !!docsBody.hidden : undefined,
       chats_collapsed: chatsBody ? !!chatsBody.hidden : undefined,
       doc_filter: docFilter ? String(docFilter.value || '') : undefined,
+      chat_filter: chatFilter ? String(chatFilter.value || '') : undefined,
     };
   } catch { return {}; }
 }
@@ -1490,6 +1496,7 @@ function uiLoad() {
     if (typeof s.docs_collapsed === 'boolean' && docsBody) { docsBody.hidden = !!s.docs_collapsed; if (docsToggleBtn) docsToggleBtn.setAttribute('aria-expanded', String(!docsBody.hidden)); }
     if (typeof s.chats_collapsed === 'boolean' && chatsBody) { chatsBody.hidden = !!s.chats_collapsed; if (chatsToggleBtn) chatsToggleBtn.setAttribute('aria-expanded', String(!chatsBody.hidden)); }
     if (typeof s.doc_filter === 'string' && docFilter) docFilter.value = s.doc_filter;
+    if (typeof s.chat_filter === 'string' && chatFilter) chatFilter.value = s.chat_filter;
     // Trigger change handlers to sync visibility
     if (methodSel) methodSel.dispatchEvent(new Event('change'));
     if (rerankCk) rerankCk.dispatchEvent(new Event('change'));
@@ -1509,6 +1516,7 @@ function bindUiAutosave() {
     docsToggleBtn.addEventListener('click', () => { try { docsBody.hidden = !docsBody.hidden; docsToggleBtn.setAttribute('aria-expanded', String(!docsBody.hidden)); uiSave(); } catch {} });
   }
   if (docFilter) docFilter.addEventListener('input', () => { uiSave(); loadDocs(); });
+  if (chatFilter) chatFilter.addEventListener('input', () => { uiSave(); loadChats(); });
   if (chatsToggleBtn && chatsBody) {
     chatsToggleBtn.addEventListener('click', () => { try { chatsBody.hidden = !chatsBody.hidden; chatsToggleBtn.setAttribute('aria-expanded', String(!chatsBody.hidden)); uiSave(); } catch {} });
   }
