@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.3.1] - 2025-09-26
+
+### Changed
+- Accessibility polish: add aria-controls for Docs/Chats/Stats toggles; aria-live="polite" and aria-busy on dynamic lists; backend status badge uses role="status" to announce updates.
+
+### Fixed
+- Citations DB export: consistently render per-chat CSV/MD from JSON citations so rows are present when citations exist. Tightened DB-level export tests (CSV row count and MD bullet lines).
+
 ## [v0.3.0] - 2025-09-26
 
 ### Added
