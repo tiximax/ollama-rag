@@ -110,6 +110,7 @@ const settingsProvider = document.getElementById('settings-provider');
 const settingsStreamDefault = document.getElementById('settings-stream-default');
 const settingsLangs = document.getElementById('settings-langs');
 const settingsSave = document.getElementById('settings-save');
+const settingsResetUI = document.getElementById('settings-reset-ui');
 
 async function loadProvider() {
   try {
@@ -1195,13 +1196,24 @@ if (menuSettings && settingsOverlay && settingsModal && settingsClose && setting
       // Save provider to backend
       if (settingsProvider && settingsProvider.value) {
         await setProvider(settingsProvider.value);
+        uiSave();
       }
       closeSettings();
     } catch (e) {
-      alert('Lưu cài đặt lỗi: ' + e);
+      notifyError('Lưu cài đặt lỗi: ' + e);
     }
   });
 }
+if (settingsResetUI) settingsResetUI.addEventListener('click', () => {
+  try {
+    localStorage.removeItem(UI_STATE_KEY);
+    resetAdvancedDefaults();
+    if (topkInput) topkInput.value = '5';
+    uiSave();
+    notifySuccess('Đã khôi phục UI mặc định');
+  } catch (e) { notifyError('Khôi phục UI lỗi: ' + e); }
+});
+
 if (citationsChatBtn) citationsChatBtn.addEventListener('click', async () => {
   const id = chatSelect.value;
   if (!id) { alert('Chưa chọn chat'); return; }
@@ -1242,6 +1254,8 @@ loadProvider().then(() => loadDbs().then(async () => {
   await loadFilters();
   await loadDocs();
   settingsApplyToUI();
+  uiLoad();
+  bindUiAutosave();
   await loadLogsInfo();
   await loadAnalytics();
   await loadLogsSummary();
@@ -1253,6 +1267,7 @@ if (methodSel) {
     const m = methodSel.value;
     const show = m === 'hybrid';
     if (bm25Wrap) bm25Wrap.style.display = show ? '' : 'none';
+    uiSave();
   });
 }
 
@@ -1261,12 +1276,14 @@ if (rerankCk) {
     const on = rerankCk.checked;
     if (rerankTopWrap) rerankTopWrap.style.display = on ? '' : 'none';
     if (rerankAdv) rerankAdv.style.display = on ? '' : 'none';
+    uiSave();
   });
 }
 
 if (bm25Range && bm25Val) {
   bm25Range.addEventListener('input', () => {
     bm25Val.textContent = bm25Range.value;
+    uiSave();
   });
 }
 
@@ -1277,12 +1294,14 @@ if (multihopCk) {
     if (multihopFanoutWrap) multihopFanoutWrap.style.display = on ? '' : 'none';
     if (multihopFanout1Wrap) multihopFanout1Wrap.style.display = on ? '' : 'none';
     if (multihopBudgetWrap) multihopBudgetWrap.style.display = on ? '' : 'none';
+    uiSave();
   });
 }
 
 if (rewriteCk) {
   rewriteCk.addEventListener('change', () => {
     if (rewriteNWrap) rewriteNWrap.style.display = rewriteCk.checked ? '' : 'none';
+    uiSave();
   });
 }
 
@@ -1338,6 +1357,70 @@ function resetAdvancedDefaults() {
 }
 
 if (advResetBtn) advResetBtn.addEventListener('click', resetAdvancedDefaults);
+
+// ===== UI state (localStorage) =====
+const UI_STATE_KEY = 'rag_ui_state';
+function uiCollect() {
+  try {
+    return {
+      provider: providerSel ? providerSel.value : undefined,
+      topk: topkInput ? String(topkInput.value || '5') : undefined,
+      method: methodSel ? methodSel.value : undefined,
+      bm25: bm25Range ? String(bm25Range.value || '0.5') : undefined,
+      rerank: rerankCk ? !!rerankCk.checked : undefined,
+      rerank_topn: rerankTopN ? String(rerankTopN.value || '10') : undefined,
+      rr_provider: rrProvider ? rrProvider.value : undefined,
+      rr_maxk: rrMaxK ? String(rrMaxK.value || '50') : undefined,
+      rr_batch: rrBatch ? String(rrBatch.value || '16') : undefined,
+      rr_threads: rrThreads ? String(rrThreads.value || '1') : undefined,
+      rewrite: rewriteCk ? !!rewriteCk.checked : undefined,
+      rewrite_n: rewriteN ? String(rewriteN.value || '2') : undefined,
+      multihop: multihopCk ? !!multihopCk.checked : undefined,
+      depth: hopDepth ? String(hopDepth.value || '2') : undefined,
+      fanout: hopFanout ? String(hopFanout.value || '2') : undefined,
+      fanout1: hopFanout1 ? String(hopFanout1.value || '1') : undefined,
+      budget: hopBudget ? String(hopBudget.value || '0') : undefined,
+      stream: streamCk ? !!streamCk.checked : undefined,
+    };
+  } catch { return {}; }
+}
+function uiSave() {
+  try { localStorage.setItem(UI_STATE_KEY, JSON.stringify(uiCollect())); } catch {}
+}
+function uiLoad() {
+  try {
+    const raw = localStorage.getItem(UI_STATE_KEY) || '{}';
+    const s = JSON.parse(raw);
+    if (s.topk && topkInput) topkInput.value = String(s.topk);
+    if (s.method && methodSel) methodSel.value = s.method;
+    if (s.bm25 && bm25Range) { bm25Range.value = String(s.bm25); if (bm25Val) bm25Val.textContent = bm25Range.value; }
+    if (typeof s.rerank === 'boolean' && rerankCk) rerankCk.checked = !!s.rerank;
+    if (s.rerank_topn && rerankTopN) rerankTopN.value = String(s.rerank_topn);
+    if (s.rr_provider && rrProvider) rrProvider.value = s.rr_provider;
+    if (s.rr_maxk && rrMaxK) rrMaxK.value = String(s.rr_maxk);
+    if (s.rr_batch && rrBatch) rrBatch.value = String(s.rr_batch);
+    if (s.rr_threads && rrThreads) rrThreads.value = String(s.rr_threads);
+    if (typeof s.rewrite === 'boolean' && rewriteCk) rewriteCk.checked = !!s.rewrite;
+    if (s.rewrite_n && rewriteN) rewriteN.value = String(s.rewrite_n);
+    if (typeof s.multihop === 'boolean' && multihopCk) multihopCk.checked = !!s.multihop;
+    if (s.depth && hopDepth) hopDepth.value = String(s.depth);
+    if (s.fanout && hopFanout) hopFanout.value = String(s.fanout);
+    if (s.fanout1 && hopFanout1) hopFanout1.value = String(s.fanout1);
+    if (s.budget && hopBudget) hopBudget.value = String(s.budget);
+    if (typeof s.stream === 'boolean' && streamCk) streamCk.checked = !!s.stream;
+    // Trigger change handlers to sync visibility
+    if (methodSel) methodSel.dispatchEvent(new Event('change'));
+    if (rerankCk) rerankCk.dispatchEvent(new Event('change'));
+    if (rewriteCk) rewriteCk.dispatchEvent(new Event('change'));
+    if (multihopCk) multihopCk.dispatchEvent(new Event('change'));
+  } catch {}
+}
+
+// Auto-save events for UI controls
+function bindUiAutosave() {
+  const bind = (el, evt='change') => { if (!el) return; el.addEventListener(evt, uiSave); };
+  [topkInput, methodSel, bm25Range, rerankCk, rerankTopN, rrProvider, rrMaxK, rrBatch, rrThreads, rewriteCk, rewriteN, multihopCk, hopDepth, hopFanout, hopFanout1, hopBudget, streamCk].forEach(e => bind(e));
+}
 
 // ===== Toast notifications =====
 const _toastContainer = () => {
