@@ -58,6 +58,8 @@ body { font-family: system-ui, Arial, sans-serif; margin: 0; background: #0b1220
 /***** Buttons and inputs *****/
 .btn { background: #1e293b; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 12px; cursor: pointer; }
 .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+.btn:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
+.list li:focus-within { border-color: #3b82f6; }
 .btn.primary { background: #1d4ed8; border-color: #1d4ed8; }
 .btn.danger { background: #7f1d1d; border-color: #7f1d1d; }
 .btn.full { width: 100%; }

@@ -294,7 +294,7 @@ if (docList) {
       docs.forEach(item => {
         const li = document.createElement('li');
         const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = item.source;
-        const span = document.createElement('span'); span.className = 'title'; span.textContent = `${item.source} (${item.chunks})`;
+const span = document.createElement('span'); span.className = 'title'; span.textContent = `📄 ${item.source} (${item.chunks})`;
         li.appendChild(cb); li.appendChild(span);
         docList.appendChild(li);
       });
@@ -326,7 +326,7 @@ function renderChatList(chats) {
     const li = document.createElement('li');
     const radio = document.createElement('input'); radio.type = 'radio'; radio.name = 'chatlist'; radio.value = c.id;
     radio.addEventListener('change', () => { chatSelect.value = c.id; });
-    const span = document.createElement('span'); span.className = 'title'; span.textContent = c.name || c.id;
+const span = document.createElement('span'); span.className = 'title'; span.textContent = `💬 ${c.name || c.id}`;
     li.appendChild(radio); li.appendChild(span);
     chatList.appendChild(li);
   });
@@ -1567,6 +1567,23 @@ window.addEventListener('keydown', (e) => {
         if (askBtn) askBtn.click();
         e.preventDefault();
       }
+    }
+  } catch {}
+});
+
+// Keyboard shortcuts for panels: Alt+D (docs), Alt+C (chats), Alt+S (stats)
+window.addEventListener('keydown', (e) => {
+  try {
+    if (!e.altKey) return;
+    const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+    // Avoid when typing in inputs/textareas/selects
+    if (['input','textarea','select'].includes(tag)) return;
+    if (e.key.toLowerCase() === 'd' && docsToggleBtn && docsBody) {
+      docsBody.hidden = !docsBody.hidden; docsToggleBtn.setAttribute('aria-expanded', String(!docsBody.hidden)); uiSave(); toast(`Docs panel: ${docsBody.hidden ? 'thu gọn' : 'mở rộng'}`, 'info'); e.preventDefault();
+    } else if (e.key.toLowerCase() === 'c' && chatsToggleBtn && chatsBody) {
+      chatsBody.hidden = !chatsBody.hidden; chatsToggleBtn.setAttribute('aria-expanded', String(!chatsBody.hidden)); uiSave(); toast(`Chats panel: ${chatsBody.hidden ? 'thu gọn' : 'mở rộng'}`, 'info'); e.preventDefault();
+    } else if (e.key.toLowerCase() === 's' && statsToggleBtn && statsBody) {
+      statsBody.hidden = !statsBody.hidden; uiSave(); toast(`Stats panel: ${statsBody.hidden ? 'thu gọn' : 'mở rộng'}`, 'info'); e.preventDefault();
     }
   } catch {}
 });

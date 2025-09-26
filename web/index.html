@@ -46,9 +46,9 @@
       <div class="workspace">
         <!-- Sidebar -->
         <aside class="sidebar">
-          <div class="panel">
-            <div class="panel-title">📄 Tài liệu trong DB (doc_id): <button id="btn-docs-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="true">▾</button></div>
-            <div id="docs-body">
+<div class="panel">
+            <div class="panel-title">📄 Tài liệu trong DB (doc_id): <button id="btn-docs-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="false">▾</button></div>
+            <div id="docs-body" hidden>
               <ul id="doc-list" class="list"></ul>
               <div class="panel-actions">
                 <button id="btn-docs-delete" class="btn danger">🗑️ Xóa tài liệu đã chọn</button>
@@ -60,9 +60,9 @@
             <button id="btn-chat-new" class="btn primary full">➕ Hội thoại mới</button>
           </div>
 
-          <div class="panel">
-            <div class="panel-title">💬 Lịch sử hội thoại: <button id="btn-chats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="true">▾</button></div>
-            <div id="chats-body">
+<div class="panel">
+            <div class="panel-title">💬 Lịch sử hội thoại: <button id="btn-chats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="false">▾</button></div>
+            <div id="chats-body" hidden>
               <ul id="chat-list" class="list"></ul>
               <!-- Hidden select to keep compatibility with existing JS logic -->
               <select id="chat-select" style="display:none;"></select>
