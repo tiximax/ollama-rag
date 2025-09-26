@@ -782,8 +782,8 @@ def api_logs_export(db: Optional[str] = None, since: Optional[str] = None, until
         if db:
             engine.use_db(db)
         content = exp_logger.export(engine.db_name, since=since, until=until)
-        from datetime import datetime as _dt
-        ts = _dt.utcnow().strftime("%Y%m%d-%H%M%S")
+        from datetime import datetime as _dt, timezone as _tz
+        ts = _dt.now(_tz.utc).strftime("%Y%m%d-%H%M%S")
         filename = f"logs-{engine.db_name}-{ts}.jsonl"
         return Response(content=content, media_type="application/jsonl", headers={
             "Content-Disposition": f"attachment; filename={filename}"

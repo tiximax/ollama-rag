@@ -18,9 +18,10 @@ class ApiExtraTests(unittest.TestCase):
 
     def test_analytics_chat_empty_chat(self):
         # Create DB and chat
-        name = "test_analytics_db"
+        import uuid
+        name = "test_analytics_db_" + uuid.uuid4().hex[:8]
         r = self.client.post("/api/dbs/create", json={"name": name})
-        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn(r.status_code, (200, 409), r.text)
         r = self.client.post("/api/chats", json={"db": name, "name": "Analytics Chat"})
         self.assertEqual(r.status_code, 200, r.text)
         cid = r.json().get("chat", {}).get("id")

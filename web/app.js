@@ -103,6 +103,10 @@ const reloadBtn = document.getElementById('btn-reload');
 const dbStatus = document.getElementById('db-status');
 const statsToggleBtn = document.getElementById('btn-stats-toggle');
 const statsBody = document.getElementById('stats-body');
+const docsToggleBtn = document.getElementById('btn-docs-toggle');
+const docsBody = document.getElementById('docs-body');
+const chatsToggleBtn = document.getElementById('btn-chats-toggle');
+const chatsBody = document.getElementById('chats-body');
 // Settings UI
 const menuSettings = document.getElementById('menu-settings');
 const settingsOverlay = document.getElementById('settings-overlay');
@@ -583,9 +587,11 @@ async function loadAnalytics() {
     const renderList = (el, arr) => {
       if (!el) return;
       el.innerHTML = '';
+      const id = el.id || '';
+      const prefix = id === 'an-top-sources' ? '📄 ' : id === 'an-top-versions' ? '🏷️ ' : id === 'an-top-langs' ? '🌐 ' : '';
       (arr || []).forEach(it => {
         const li = document.createElement('li');
-        li.textContent = `${it.value} (${it.count})`;
+        li.textContent = `${prefix}${it.value} (${it.count})`;
         el.appendChild(li);
       });
     };
@@ -1444,6 +1450,8 @@ function uiCollect() {
       budget: hopBudget ? String(hopBudget.value || '0') : undefined,
       stream: streamCk ? !!streamCk.checked : undefined,
       stats_collapsed: statsBody ? !!statsBody.hidden : undefined,
+      docs_collapsed: docsBody ? !!docsBody.hidden : undefined,
+      chats_collapsed: chatsBody ? !!chatsBody.hidden : undefined,
     };
   } catch { return {}; }
 }
@@ -1472,6 +1480,8 @@ function uiLoad() {
     if (s.budget && hopBudget) hopBudget.value = String(s.budget);
     if (typeof s.stream === 'boolean' && streamCk) streamCk.checked = !!s.stream;
     if (typeof s.stats_collapsed === 'boolean' && statsBody) statsBody.hidden = !!s.stats_collapsed;
+    if (typeof s.docs_collapsed === 'boolean' && docsBody) { docsBody.hidden = !!s.docs_collapsed; if (docsToggleBtn) docsToggleBtn.setAttribute('aria-expanded', String(!docsBody.hidden)); }
+    if (typeof s.chats_collapsed === 'boolean' && chatsBody) { chatsBody.hidden = !!s.chats_collapsed; if (chatsToggleBtn) chatsToggleBtn.setAttribute('aria-expanded', String(!chatsBody.hidden)); }
     // Trigger change handlers to sync visibility
     if (methodSel) methodSel.dispatchEvent(new Event('change'));
     if (rerankCk) rerankCk.dispatchEvent(new Event('change'));
@@ -1486,6 +1496,12 @@ function bindUiAutosave() {
   [topkInput, methodSel, bm25Range, rerankCk, rerankTopN, rrProvider, rrMaxK, rrBatch, rrThreads, rewriteCk, rewriteN, multihopCk, hopDepth, hopFanout, hopFanout1, hopBudget, streamCk].forEach(e => bind(e));
   if (statsToggleBtn && statsBody) {
     statsToggleBtn.addEventListener('click', () => { try { statsBody.hidden = !statsBody.hidden; uiSave(); } catch {} });
+  }
+  if (docsToggleBtn && docsBody) {
+    docsToggleBtn.addEventListener('click', () => { try { docsBody.hidden = !docsBody.hidden; docsToggleBtn.setAttribute('aria-expanded', String(!docsBody.hidden)); uiSave(); } catch {} });
+  }
+  if (chatsToggleBtn && chatsBody) {
+    chatsToggleBtn.addEventListener('click', () => { try { chatsBody.hidden = !chatsBody.hidden; chatsToggleBtn.setAttribute('aria-expanded', String(!chatsBody.hidden)); uiSave(); } catch {} });
   }
 }
 

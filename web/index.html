@@ -47,10 +47,12 @@
         <!-- Sidebar -->
         <aside class="sidebar">
           <div class="panel">
-            <div class="panel-title">📄 Tài liệu trong DB (doc_id):</div>
-            <ul id="doc-list" class="list"></ul>
-            <div class="panel-actions">
-              <button id="btn-docs-delete" class="btn danger">🗑️ Xóa tài liệu đã chọn</button>
+            <div class="panel-title">📄 Tài liệu trong DB (doc_id): <button id="btn-docs-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="true">▾</button></div>
+            <div id="docs-body">
+              <ul id="doc-list" class="list"></ul>
+              <div class="panel-actions">
+                <button id="btn-docs-delete" class="btn danger">🗑️ Xóa tài liệu đã chọn</button>
+              </div>
             </div>
           </div>
 
@@ -59,12 +61,13 @@
           </div>
 
           <div class="panel">
-            <div class="panel-title">💬 Lịch sử hội thoại:</div>
-            <ul id="chat-list" class="list"></ul>
+            <div class="panel-title">💬 Lịch sử hội thoại: <button id="btn-chats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="true">▾</button></div>
+            <div id="chats-body">
+              <ul id="chat-list" class="list"></ul>
+              <!-- Hidden select to keep compatibility with existing JS logic -->
+              <select id="chat-select" style="display:none;"></select>
+            </div>
           </div>
-
-          <!-- Hidden select to keep compatibility with existing JS logic -->
-          <select id="chat-select" style="display:none;"></select>
 
 <div class="panel">
             <div class="panel-title">📊 Thống kê nhanh <button id="btn-stats-toggle" class="btn" title="Thu gọn/mở rộng">▾</button></div>
@@ -91,7 +94,7 @@
         <main class="main">
           <div class="panel">
             <div class="panel-title">Hỏi - Đáp</div>
-<div id="result" class="result" style="min-height: 160px;">Nhập câu hỏi rồi bấm Gửi để bắt đầu. 💡</div>
+<div id="result" class="result" style="min-height: 160px;" aria-live="polite">Nhập câu hỏi rồi bấm Gửi để bắt đầu. 💡</div>
             <div id="contexts" class="contexts"></div>
             <div id="citations" class="citations"></div>
           </div>
