@@ -71,17 +71,99 @@
             <div id="citations" class="citations"></div>
           </div>
           <div class="query-row">
-<input id="txt-query" type="text" placeholder="Nhập câu hỏi... (vd: 'Hướng dẫn cài đặt?')" class="query-input" title="Câu hỏi để truy vấn RAG" />
-<button id="btn-ask" class="btn primary" title="Gửi truy vấn tới backend">Gửi</button>
-<label class="opt" title="Lưu cặp Hỏi/Đáp vào lịch sử"><input id="ck-save-chat" type="checkbox" checked /> Lưu hội thoại</label>
+            <input id="txt-query" type="text" placeholder="Nhập câu hỏi... (vd: 'Hướng dẫn cài đặt?')" class="query-input" title="Câu hỏi để truy vấn RAG" />
+            <button id="btn-ask" class="btn primary" title="Gửi truy vấn tới backend">Gửi</button>
+            <label class="opt" title="Top-K (số ngữ cảnh tối đa)">
+              K: <input id="top-k" type="number" min="1" max="50" value="5" class="control" style="width:72px" />
+            </label>
+            <label class="opt" title="Lưu cặp Hỏi/Đáp vào lịch sử"><input id="ck-save-chat" type="checkbox" checked /> Lưu hội thoại</label>
             <label class="opt">Provider:
-<select id="provider-select" class="control" title="Chọn dịch vụ sinh câu trả lời">
+              <select id="provider-select" class="control" title="Chọn dịch vụ sinh câu trả lời">
                 <option value="ollama" selected>Ollama</option>
                 <option value="openai">OpenAI</option>
               </select>
             </label>
-<label class="opt" title="Hiển thị câu trả lời theo luồng"><input id="ck-stream" type="checkbox" /> Streaming</label>
+            <label class="opt" title="Hiển thị câu trả lời theo luồng"><input id="ck-stream" type="checkbox" /> Streaming</label>
           </div>
+
+          <div class="panel">
+            <div class="panel-title">Tùy chọn nâng cao</div>
+            <div class="adv-grid">
+              <label class="opt" title="Phương pháp truy hồi: Vector (embedding), BM25 (từ khóa), Hybrid (kết hợp)">
+                Phương pháp:
+                <select id="method" class="control">
+                  <option value="vector" selected>vector</option>
+                  <option value="bm25">bm25</option>
+                  <option value="hybrid">hybrid</option>
+                </select>
+              </label>
+              <div id="bm25-weight-wrap" title="Trọng số cho BM25 khi chọn hybrid (0..1). 0.5 = cân bằng.">
+                <label class="opt">BM25 weight: <span id="bm25-weight-val">0.5</span></label>
+                <input id="bm25-weight" type="range" min="0" max="1" step="0.05" value="0.5" class="control" style="width:220px" />
+              </div>
+
+              <label class="opt" title="Reranker: sắp xếp lại các ngữ cảnh bằng mô hình ranking">
+                <input id="ck-rerank" type="checkbox" /> Dùng Reranker
+              </label>
+              <div id="rerank-topn-wrap" title="Số ngữ cảnh đầu vào cho reranker (Top-N)">
+                <label class="opt">Rerank Top-N:
+                  <input id="rerank-topn" type="number" min="1" max="50" value="10" class="control" style="width:80px" />
+                </label>
+              </div>
+              <div id="rerank-adv" title="Thiết lập nâng cao cho reranker">
+                <label class="opt">Provider:
+                  <select id="rr-provider" class="control">
+                    <option value="auto" selected>auto</option>
+                    <option value="bge">bge</option>
+                    <option value="embed">embed</option>
+                  </select>
+                </label>
+                <label class="opt">Max-K:
+                  <input id="rr-maxk" type="number" min="5" max="200" value="50" class="control" style="width:80px" />
+                </label>
+                <label class="opt">Batch:
+                  <input id="rr-batch" type="number" min="1" max="64" value="16" class="control" style="width:80px" />
+                </label>
+                <label class="opt">Threads:
+                  <input id="rr-threads" type="number" min="1" max="16" value="1" class="control" style="width:80px" />
+                </label>
+              </div>
+
+              <label class="opt" title="Rewrite: sinh biến thể truy vấn, hợp nhất RRF trước khi rerank/sinh trả lời">
+                <input id="ck-rewrite" type="checkbox" /> Rewrite truy vấn
+              </label>
+              <div id="rewrite-n-wrap" title="Số biến thể truy vấn để sinh (n)">
+                <label class="opt">n:
+                  <input id="rewrite-n" type="number" min="1" max="5" value="2" class="control" style="width:72px" />
+                </label>
+              </div>
+
+              <label class="opt" title="Multi-hop: phân rã câu hỏi thành nhiều bước truy hồi">
+                <input id="ck-multihop" type="checkbox" /> Multi-hop
+              </label>
+              <div id="multihop-depth-wrap" title="Số bước (Depth)">
+                <label class="opt">Depth:
+                  <input id="hop-depth" type="number" min="1" max="5" value="2" class="control" style="width:72px" />
+                </label>
+              </div>
+              <div id="multihop-fanout-wrap" title="Số nhánh mỗi bước (Fanout)">
+                <label class="opt">Fanout:
+                  <input id="hop-fanout" type="number" min="1" max="5" value="2" class="control" style="width:72px" />
+                </label>
+              </div>
+              <div id="multihop-fanout1-wrap" title="Fanout riêng cho hop đầu">
+                <label class="opt">Fanout-1st:
+                  <input id="hop-fanout1" type="number" min="1" max="5" value="1" class="control" style="width:72px" />
+                </label>
+              </div>
+              <div id="multihop-budget-wrap" title="Ngân sách thời gian (ms) cho toàn bộ multi-hop">
+                <label class="opt">Budget (ms):
+                  <input id="hop-budget" type="number" min="0" max="10000" value="0" class="control" style="width:92px" />
+                </label>
+              </div>
+            </div>
+          </div>
+
           <footer class="footer">
             <small>Provider: <code id="provider-name">ollama</code> | Model: <code id="model-name">llama3.1:8b</code> | Embed: <code id="embed-name">nomic-embed-text</code></small>
           </footer>
