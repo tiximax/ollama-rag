@@ -89,33 +89,33 @@
 <div class="panel">
             <div class="panel-title">Tùy chọn nâng cao <button id="btn-adv-reset" class="btn" title="Khôi phục thiết lập nâng cao về mặc định">Mặc định</button></div>
             <div class="adv-grid">
-              <label class="opt" title="Phương pháp truy hồi: Vector (embedding), BM25 (từ khóa), Hybrid (kết hợp)">
-                Phương pháp:
+<label class="opt" title="Phương pháp truy hồi: Vector (embedding), BM25 (từ khóa), Hybrid (kết hợp)">
+                Phương pháp: <span class="hint" title="vector: ngữ nghĩa | bm25: từ khoá chính xác | hybrid: kết hợp">(?)</span>
                 <select id="method" class="control">
-                  <option value="vector" selected>vector</option>
-                  <option value="bm25">bm25</option>
-                  <option value="hybrid">hybrid</option>
+                  <option value="vector" title="Dựa embedding, hợp câu hỏi ngữ nghĩa" selected>vector (semantic)</option>
+                  <option value="bm25" title="Dựa từ khoá, phù hợp truy vấn chính xác">bm25 (keywords)</option>
+                  <option value="hybrid" title="Kết hợp vector+bm25, cân bằng bằng BM25 weight">hybrid (mix)</option>
                 </select>
               </label>
-              <div id="bm25-weight-wrap" title="Trọng số cho BM25 khi chọn hybrid (0..1). 0.5 = cân bằng.">
-                <label class="opt">BM25 weight: <span id="bm25-weight-val">0.5</span></label>
+<div id="bm25-weight-wrap" title="Trọng số cho BM25 khi chọn hybrid (0..1). 0.5 = cân bằng.">
+                <label class="opt">BM25 weight <span class="hint" title="Tăng lên → ưu tiên từ khoá; giảm xuống → ưu tiên ngữ nghĩa">(?)</span>: <span id="bm25-weight-val">0.5</span></label>
                 <input id="bm25-weight" type="range" min="0" max="1" step="0.05" value="0.5" class="control" style="width:220px" />
               </div>
 
-              <label class="opt" title="Reranker: sắp xếp lại các ngữ cảnh bằng mô hình ranking">
-                <input id="ck-rerank" type="checkbox" /> Dùng Reranker
+<label class="opt" title="Reranker: sắp xếp lại các ngữ cảnh bằng mô hình ranking">
+                <input id="ck-rerank" type="checkbox" /> Dùng Reranker <span class="hint" title="Cải thiện chất lượng ngữ cảnh nhưng tốn CPU hơn">(?)</span>
               </label>
-              <div id="rerank-topn-wrap" title="Số ngữ cảnh đầu vào cho reranker (Top-N)">
-                <label class="opt">Rerank Top-N:
+<div id="rerank-topn-wrap" title="Số ngữ cảnh đầu vào cho reranker (Top-N)">
+                <label class="opt">Rerank Top-N <span class="hint" title="Tăng Top-N → reranker có nhiều ứng viên hơn (nhưng chậm hơn)">(?)</span>:
                   <input id="rerank-topn" type="number" min="1" max="50" value="10" class="control" style="width:80px" />
                 </label>
               </div>
               <div id="rerank-adv" title="Thiết lập nâng cao cho reranker">
-                <label class="opt">Provider:
+<label class="opt">Provider <span class="hint" title="auto: tự chọn | bge: reranker ONNX BGE | embed: dựa độ tương tự embedding">(?)</span>:
                   <select id="rr-provider" class="control">
-                    <option value="auto" selected>auto</option>
-                    <option value="bge">bge</option>
-                    <option value="embed">embed</option>
+                    <option value="auto" title="Tự động chọn phù hợp" selected>auto</option>
+                    <option value="bge" title="Dùng mô hình rerank BGE (ONNX)">bge</option>
+                    <option value="embed" title="Ưu tiên điểm tương tự embedding">embed</option>
                   </select>
                 </label>
                 <label class="opt">Max-K:
@@ -129,35 +129,35 @@
                 </label>
               </div>
 
-              <label class="opt" title="Rewrite: sinh biến thể truy vấn, hợp nhất RRF trước khi rerank/sinh trả lời">
-                <input id="ck-rewrite" type="checkbox" /> Rewrite truy vấn
+<label class="opt" title="Rewrite: sinh biến thể truy vấn, hợp nhất RRF trước khi rerank/sinh trả lời">
+                <input id="ck-rewrite" type="checkbox" /> Rewrite truy vấn <span class="hint" title="Hữu ích khi câu hỏi ngắn/khó; khuyến nghị n=2-3">(?)</span>
               </label>
-              <div id="rewrite-n-wrap" title="Số biến thể truy vấn để sinh (n)">
-                <label class="opt">n:
+<div id="rewrite-n-wrap" title="Số biến thể truy vấn để sinh (n)">
+                <label class="opt">n <span class="hint" title="2-3: cân bằng chất lượng/hiệu năng">(?)</span>:
                   <input id="rewrite-n" type="number" min="1" max="5" value="2" class="control" style="width:72px" />
                 </label>
               </div>
 
-              <label class="opt" title="Multi-hop: phân rã câu hỏi thành nhiều bước truy hồi">
-                <input id="ck-multihop" type="checkbox" /> Multi-hop
+<label class="opt" title="Multi-hop: phân rã câu hỏi thành nhiều bước truy hồi">
+                <input id="ck-multihop" type="checkbox" /> Multi-hop <span class="hint" title="Hữu ích cho câu hỏi phức tạp; có thể chậm hơn">(?)</span>
               </label>
-              <div id="multihop-depth-wrap" title="Số bước (Depth)">
-                <label class="opt">Depth:
+<div id="multihop-depth-wrap" title="Số bước (Depth)">
+                <label class="opt">Depth <span class="hint" title="Tăng Depth để đi sâu hơn; 2 là mặc định hợp lý">(?)</span>:
                   <input id="hop-depth" type="number" min="1" max="5" value="2" class="control" style="width:72px" />
                 </label>
               </div>
-              <div id="multihop-fanout-wrap" title="Số nhánh mỗi bước (Fanout)">
-                <label class="opt">Fanout:
+<div id="multihop-fanout-wrap" title="Số nhánh mỗi bước (Fanout)">
+                <label class="opt">Fanout <span class="hint" title="Số nhánh expand mỗi hop; 2 là cân bằng">(?)</span>:
                   <input id="hop-fanout" type="number" min="1" max="5" value="2" class="control" style="width:72px" />
                 </label>
               </div>
-              <div id="multihop-fanout1-wrap" title="Fanout riêng cho hop đầu">
-                <label class="opt">Fanout-1st:
+<div id="multihop-fanout1-wrap" title="Fanout riêng cho hop đầu">
+                <label class="opt">Fanout-1st <span class="hint" title="Giới hạn mở rộng ở hop đầu để giảm nhiễu">(?)</span>:
                   <input id="hop-fanout1" type="number" min="1" max="5" value="1" class="control" style="width:72px" />
                 </label>
               </div>
-              <div id="multihop-budget-wrap" title="Ngân sách thời gian (ms) cho toàn bộ multi-hop">
-                <label class="opt">Budget (ms):
+<div id="multihop-budget-wrap" title="Ngân sách thời gian (ms) cho toàn bộ multi-hop">
+                <label class="opt">Budget (ms) <span class="hint" title="Giới hạn thời gian cho toàn bộ multi-hop; 0 = không giới hạn">(?)</span>:
                   <input id="hop-budget" type="number" min="0" max="10000" value="0" class="control" style="width:92px" />
                 </label>
               </div>

@@ -49,6 +49,7 @@ body { font-family: system-ui, Arial, sans-serif; margin: 0; background: #0b1220
 .list li .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .list li.empty { justify-content: center; }
 .muted { color: var(--muted); }
+.hint { color: var(--muted); margin-left: 4px; cursor: help; font-size: 12px; user-select: none; }
 
 /***** Buttons and inputs *****/
 .btn { background: #1e293b; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 12px; cursor: pointer; }
