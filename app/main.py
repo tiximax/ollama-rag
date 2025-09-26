@@ -955,60 +955,34 @@ def api_citations_db(format: str = 'json', db: Optional[str] = None, sources: Op
     try:
         if db:
             engine.use_db(db)
-        # build per-chat files and zip
+        # Build per-chat files and zip strictly from JSON citations for consistency
         import io, zipfile, json
         mem = io.BytesIO()
+        fmt = (format or 'json').lower()
         with zipfile.ZipFile(mem, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
             for ch in chat_store.list(engine.db_name):
                 cid = ch.get('id')
                 if not cid:
                     continue
-                content_resp = api_citations_chat(cid, format=format, db=engine.db_name, sources=sources, versions=versions, languages=languages)  # type: ignore[arg-type]
-                # content_resp có thể là Response (csv/md) hoặc list json
+                # Always get JSON rows first, then render per requested format
+                rows = api_citations_chat(cid, format='json', db=engine.db_name, sources=sources, versions=versions, languages=languages)  # type: ignore[arg-type]
+                rows = rows if isinstance(rows, list) else []
                 fname_base = ch.get('name') or cid
-                if format.lower() == 'csv':
-                    if hasattr(content_resp, 'body_iterator'):
-                        # Không thể dễ dàng đọc body từ Response streaming trong server context, nên dựng lại CSV tại đây
-                        # fallback: tạo CSV từ list JSON
-                        data = api_citations_chat(cid, format='json', db=engine.db_name)  # type: ignore[arg-type]
-                        rows = data if isinstance(data, list) else []
-                        import csv
-                        from io import StringIO
-                        s = StringIO()
-                        w = csv.DictWriter(s, fieldnames=['n','source','version','language','chunk','question','excerpt','ts'])
-                        w.writeheader()
-                        for r in rows:
-                            w.writerow(r)
-                        zf.writestr(f"{fname_base}-citations.csv", s.getvalue())
-                    else:
-                        # nếu trả JSON list
-                        rows = content_resp if isinstance(content_resp, list) else []
-                        import csv
-                        from io import StringIO
-                        s = StringIO()
-                        w = csv.DictWriter(s, fieldnames=['n','source','version','language','chunk','question','excerpt','ts'])
-                        w.writeheader()
-                        for r in rows:
-                            w.writerow(r)
-                        zf.writestr(f"{fname_base}-citations.csv", s.getvalue())
-                elif format.lower() in ('md','markdown'):
-                    if hasattr(content_resp, 'body_iterator'):
-                        # không xử lý body_iterator ở đây; tạo lại từ JSON
-                        rows = api_citations_chat(cid, format='json', db=engine.db_name)  # type: ignore[arg-type]
-                        lines = ['# Citations']
-                        for c in rows:
-                            lines.append(f"- [{c.get('n')}] {c.get('source')} v={c.get('version')} lang={c.get('language')} chunk={c.get('chunk')}")
-                        zf.writestr(f"{fname_base}-citations.md", "\n".join(lines))
-                    else:
-                        # list
-                        rows = content_resp if isinstance(content_resp, list) else []
-                        lines = ['# Citations']
-                        for c in rows:
-                            lines.append(f"- [{c.get('n')}] {c.get('source')} v={c.get('version')} lang={c.get('language')} chunk={c.get('chunk')}")
-                        zf.writestr(f"{fname_base}-citations.md", "\n".join(lines))
+                if fmt == 'csv':
+                    import csv
+                    from io import StringIO
+                    s = StringIO()
+                    w = csv.DictWriter(s, fieldnames=['n','source','version','language','chunk','question','excerpt','ts'])
+                    w.writeheader()
+                    for r in rows:
+                        w.writerow(r)
+                    zf.writestr(f"{fname_base}-citations.csv", s.getvalue())
+                elif fmt in ('md','markdown'):
+                    lines = ['# Citations']
+                    for c in rows:
+                        lines.append(f"- [{c.get('n')}] {c.get('source')} v={c.get('version')} lang={c.get('language')} chunk={c.get('chunk')}")
+                    zf.writestr(f"{fname_base}-citations.md", "\n".join(lines))
                 else:
-                    # json
-                    rows = content_resp if isinstance(content_resp, list) else []
                     zf.writestr(f"{fname_base}-citations.json", json.dumps(rows, ensure_ascii=False, indent=2))
         mem.seek(0)
         return Response(content=mem.read(), media_type='application/zip', headers={'Content-Disposition': f'attachment; filename={engine.db_name}-citations.zip'})

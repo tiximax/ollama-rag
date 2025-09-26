@@ -152,17 +152,21 @@ class ApiCitationsChatFormatsTests(unittest.TestCase):
                 names = zf.namelist()
                 self.assertTrue(any(n.endswith("X1-citations.csv") for n in names), names)
                 self.assertTrue(any(n.endswith("X2-citations.csv") for n in names), names)
-                # Inspect contents: ensure both CSVs parse and have correct headers (rows may be 0+)
+                # Inspect: ensure each CSV has exactly one row with expected source
                 expected_hdr = ['n','source','version','language','chunk','question','excerpt','ts']
-                parsed = 0
                 for nm in [n for n in names if n.endswith("-citations.csv")]:
                     with zf.open(nm) as f:
                         content = f.read().decode('utf-8')
                         rdr = csv.DictReader(io.StringIO(content))
                         self.assertEqual(rdr.fieldnames, expected_hdr)
-                        _ = list(rdr)  # ensure parseable
-                        parsed += 1
-                self.assertEqual(parsed, 2)
+                        rows = list(rdr)
+                        self.assertEqual(len(rows), 1)
+                with zf.open([n for n in names if n.endswith("X1-citations.csv")][0]) as f:
+                    r1 = list(csv.DictReader(io.StringIO(f.read().decode('utf-8'))))
+                    self.assertEqual(r1[0]['source'], 'docs/x1.txt')
+                with zf.open([n for n in names if n.endswith("X2-citations.csv")][0]) as f:
+                    r2 = list(csv.DictReader(io.StringIO(f.read().decode('utf-8'))))
+                    self.assertEqual(r2[0]['source'], 'docs/x2.txt')
 
             # MD zip
             r = self.client.get(f"/api/citations/db?db={dbname}&format=md")
@@ -174,11 +178,15 @@ class ApiCitationsChatFormatsTests(unittest.TestCase):
                 names = zf.namelist()
                 self.assertTrue(any(n.endswith("X1-citations.md") for n in names), names)
                 self.assertTrue(any(n.endswith("X2-citations.md") for n in names), names)
-                # Inspect content of one (validate basic structure)
+                # Inspect content: expect bullet lines exist for each chat
+                with zf.open([n for n in names if n.endswith("X1-citations.md")][0]) as f:
+                    md1 = f.read().decode('utf-8')
+                    self.assertIn("# Citations", md1)
+                    self.assertIn("- [1] docs/x1.txt v=v1 lang=vi chunk=1", md1)
                 with zf.open([n for n in names if n.endswith("X2-citations.md")][0]) as f:
-                    md = f.read().decode('utf-8')
-                    self.assertIn("# Citations", md)
-                    # Rows may be empty depending on server fallback path; ensure parseable header exists
+                    md2 = f.read().decode('utf-8')
+                    self.assertIn("# Citations", md2)
+                    self.assertIn("- [1] docs/x2.txt v=v2 lang=en chunk=2", md2)
         finally:
             self.client.delete(f"/api/dbs/{dbname}")
 
