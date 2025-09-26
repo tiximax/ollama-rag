@@ -1454,9 +1454,36 @@ function notifyError(msg) { try { toast(msg, 'error', 6000); } catch {} }
 function notifySuccess(msg) { try { toast(msg, 'success', 3500); } catch {} }
 function notifyWarn(msg) { try { toast(msg, 'warn', 4000); } catch {} }
 
-// Quick Start help
-if (menuHelp) {
-  menuHelp.addEventListener('click', () => {
-    alert('Bắt đầu nhanh:\n1) Chạy Ollama: ollama serve\n2) Tải model: ollama pull nomic-embed-text và ollama pull llama3.1:8b\n3) Ingest tài liệu ở thanh trên, rồi Gửi câu hỏi\nHoặc đổi Provider sang OpenAI trong Cài đặt nếu có OPENAI_API_KEY.');
-  });
+// Quick Start overlay & keyboard shortcuts
+const quickOverlay = document.getElementById('quickstart-overlay');
+const quickModal = document.getElementById('quickstart-modal');
+const quickClose = document.getElementById('quickstart-close');
+const quickOk = document.getElementById('quickstart-ok');
+function openQuickStart() {
+  try { if (quickOverlay) quickOverlay.hidden = false; if (quickModal) quickModal.hidden = false; } catch {}
 }
+function closeQuickStart() {
+  try { if (quickOverlay) quickOverlay.hidden = true; if (quickModal) quickModal.hidden = true; } catch {}
+}
+if (menuHelp) menuHelp.addEventListener('click', openQuickStart);
+if (quickClose) quickClose.addEventListener('click', closeQuickStart);
+if (quickOk) quickOk.addEventListener('click', closeQuickStart);
+if (quickOverlay) quickOverlay.addEventListener('click', closeQuickStart);
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeQuickStart(); });
+
+// Keyboard shortcuts: Enter to send, Ctrl+Enter toggle streaming
+window.addEventListener('keydown', (e) => {
+  try {
+    const active = document.activeElement;
+    if (!active) return;
+    if (active === queryInput) {
+      if (e.key === 'Enter' && e.ctrlKey) {
+        if (streamCk) { streamCk.checked = !streamCk.checked; uiSave(); toast(`Streaming: ${streamCk.checked ? 'Bật' : 'Tắt'}`, 'info'); }
+        e.preventDefault();
+      } else if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.metaKey) {
+        if (askBtn) askBtn.click();
+        e.preventDefault();
+      }
+    }
+  } catch {}
+});

@@ -200,6 +200,32 @@
       </div>
     </div>
 
+    <!-- Quick Start Overlay -->
+    <div id="quickstart-overlay" class="overlay" hidden></div>
+    <div id="quickstart-modal" class="modal" hidden>
+      <div class="modal-header">
+        <div class="modal-title">Bắt đầu nhanh</div>
+        <button id="quickstart-close" class="btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <ol>
+          <li><strong>Chạy Ollama</strong>: mở PowerShell và chạy <code>ollama serve</code></li>
+          <li><strong>Tải models</strong>:
+            <div><code>ollama pull nomic-embed-text</code></div>
+            <div><code>ollama pull llama3.1:8b</code></div>
+          </li>
+          <li><strong>Ingest &amp; Hỏi</strong>:
+            <div>- Thêm tài liệu: nhập đường dẫn/URL (vd: <code>data/docs/*.txt</code>) hoặc chọn file và bấm “Ingest file”.</div>
+            <div>- Nhập câu hỏi và bấm “Gửi”. (Phím tắt: Enter gửi, Ctrl+Enter bật/tắt Streaming)</div>
+          </li>
+        </ol>
+        <p class="muted">Mẹo: Nếu dùng OpenAI, đổi Provider trong Cài đặt và cài <code>OPENAI_API_KEY</code>.</p>
+      </div>
+      <div class="modal-footer">
+        <button id="quickstart-ok" class="btn primary">OK</button>
+      </div>
+    </div>
+
     <div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
     <script src="/static/app.js?v=20250926-01"></script>
   </body>
