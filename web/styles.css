@@ -18,6 +18,11 @@ body { font-family: system-ui, Arial, sans-serif; margin: 0; background: #0b1220
 .topbar .btn.file input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .topbar .left, .topbar .right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .status { color: var(--muted); margin-left: 8px; }
+.status.badge { padding: 2px 6px; border-radius: 6px; margin-left: 8px; font-size: 12px; }
+.status.ok { background: #e7f7ee; color: #0b8a3b; border: 1px solid #0b8a3b22; }
+.status.warning { background: #fff8e6; color: #b7791f; border: 1px solid #b7791f22; }
+.status.error { background: #fde8e8; color: #b91c1c; border: 1px solid #b91c1c22; }
+.tooltip { cursor: help; border-bottom: 1px dotted #999; }
 
 .workspace { flex: 1; display: grid; grid-template-columns: 320px 1fr; gap: 0; min-height: 0; }
 .sidebar { border-right: 1px solid var(--border); background: #0e1526; padding: 12px; overflow: auto; }

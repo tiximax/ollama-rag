@@ -124,22 +124,30 @@ async function loadProvider() {
 }
 
 async function loadHealth() {
+  // Hiển thị health dưới dạng badge màu + tooltip gợi ý
+  const setBadge = (cls, text, title) => {
+    if (!backendStatus) return;
+    backendStatus.className = `status badge ${cls}`;
+    backendStatus.textContent = text;
+    if (title) backendStatus.title = Array.isArray(title) ? title.join('\n') : String(title);
+  };
   try {
     const resp = await fetch('/api/health');
     const data = await resp.json();
-    if (backendStatus) {
-      if (resp.ok) {
-        const p = (data.provider || '').toLowerCase();
-        if (p === 'ollama') {
-          backendStatus.textContent = data.ollama && data.ollama.ok ? 'Backend: Ollama OK' : `Backend: Ollama lỗi — ${(data.ollama && data.ollama.error) || 'Không rõ'}`;
-        } else if (p === 'openai') {
-          backendStatus.textContent = data.openai && data.openai.configured ? 'Backend: OpenAI OK' : 'Backend: OpenAI chưa cấu hình';
-        } else {
-          backendStatus.textContent = 'Backend: Không rõ';
-        }
-      } else {
-        backendStatus.textContent = 'Backend: lỗi health API';
-      }
+    if (resp.ok) {
+      const st = (data.overall_status || '').toLowerCase();
+      const msg = data.message || '';
+      const tips = data.suggestions || [];
+      if (st === 'ok') setBadge('ok', `✅ ${msg}`, tips);
+      else if (st === 'warning') setBadge('warning', `⚠️ ${msg}`, tips);
+      else setBadge('error', `⛔ ${msg || 'Backend lỗi'}`, tips);
+
+      // Disable/enable action buttons dựa trên health
+      const healthy = st === 'ok';
+      const buttons = [ingestPathsBtn, uploadBtn, askBtn];
+      buttons.forEach(b => { if (b) b.disabled = !healthy; });
+    } else {
+      setBadge('error', '⛔ Backend: lỗi health API');
     }
   } catch (e) {
     if (backendStatus) backendStatus.textContent = 'Backend: lỗi kết nối health';
