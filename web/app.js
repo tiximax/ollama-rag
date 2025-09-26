@@ -285,6 +285,7 @@ async function loadDocs() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || 'Không tải được danh sách tài liệu');
 if (docList) {
+      try { docList.setAttribute('aria-busy', 'true'); } catch {}
       docList.innerHTML = '';
       let docs = data.docs || [];
       const term = (docFilter && docFilter.value || '').trim().toLowerCase();
@@ -309,6 +310,7 @@ const span = document.createElement('span'); span.className = 'title'; span.text
       const totalChunks = docs.reduce((s, it) => s + (parseInt(it.chunks, 10) || 0), 0);
       const name = (dbSelect && dbSelect.value) || 'default';
       if (dbStatus) dbStatus.textContent = `DB '${name}' — ${totalDocs} tài liệu, ${totalChunks} chunks`;
+      try { docList.setAttribute('aria-busy', 'false'); } catch {}
     }
   } catch (e) {
     console.error('loadDocs error', e);
@@ -597,6 +599,7 @@ async function loadAnalytics() {
     if (anAnsMed) anAnsMed.textContent = data.answer_len_median == null ? '-' : String(data.answer_len_median);
     const renderList = (el, arr) => {
       if (!el) return;
+      try { el.setAttribute('aria-busy', 'true'); } catch {}
       el.innerHTML = '';
       const id = el.id || '';
       const prefix = id === 'an-top-sources' ? '📄 ' : id === 'an-top-versions' ? '🏷️ ' : id === 'an-top-langs' ? '🌐 ' : '';
@@ -605,6 +608,7 @@ async function loadAnalytics() {
         li.textContent = `${prefix}${it.value} (${it.count})`;
         el.appendChild(li);
       });
+      try { el.setAttribute('aria-busy', 'false'); } catch {}
     };
     renderList(anTopSources, data.top_sources || []);
     renderList(anTopVersions, data.top_versions || []);

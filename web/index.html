@@ -34,7 +34,7 @@
 <button id="btn-reload" class="btn" title="Tải lại danh sách DB, tài liệu và hội thoại">🔄 Tải lại</button>
 <button id="btn-chat-export-db-json" class="btn" title="Xuất toàn bộ hội thoại của DB thành ZIP (JSON)">📦 Export DB (ZIP)</button>
           <span id="db-status" class="status"></span>
-          <span id="backend-status" class="status"></span>
+<span id="backend-status" class="status" role="status" aria-live="polite"></span>
         </div>
       </div>
       <!-- Global progress bar -->
@@ -47,10 +47,10 @@
         <!-- Sidebar -->
         <aside class="sidebar">
 <div class="panel">
-            <div class="panel-title">📄 Tài liệu trong DB (doc_id): <button id="btn-docs-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="false">▾</button></div>
+            <div class="panel-title">📄 Tài liệu trong DB (doc_id): <button id="btn-docs-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="false" aria-controls="docs-body">▾</button></div>
             <div id="docs-body" hidden>
               <input id="doc-filter" class="control" type="text" placeholder="Lọc tài liệu (từ khóa)" title="Lọc theo từ khóa trong đường dẫn nguồn" />
-              <ul id="doc-list" class="list"></ul>
+              <ul id="doc-list" class="list" aria-live="polite"></ul>
               <div class="panel-actions">
                 <button id="btn-docs-delete" class="btn danger">🗑️ Xóa tài liệu đã chọn</button>
               </div>
@@ -62,19 +62,19 @@
           </div>
 
 <div class="panel">
-            <div class="panel-title">💬 Lịch sử hội thoại: <button id="btn-chats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="false">▾</button></div>
+            <div class="panel-title">💬 Lịch sử hội thoại: <button id="btn-chats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="false" aria-controls="chats-body">▾</button></div>
             <div id="chats-body" hidden>
               <input id="chat-filter" class="control" type="text" placeholder="Lọc hội thoại (tên)" title="Lọc theo tên hội thoại" />
-              <ul id="chat-list" class="list"></ul>
+              <ul id="chat-list" class="list" aria-live="polite"></ul>
               <!-- Hidden select to keep compatibility with existing JS logic -->
               <select id="chat-select" style="display:none;"></select>
             </div>
           </div>
 
 <div class="panel">
-            <div class="panel-title">📊 Thống kê nhanh <button id="btn-stats-toggle" class="btn" title="Thu gọn/mở rộng">▾</button></div>
+            <div class="panel-title">📊 Thống kê nhanh <button id="btn-stats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="true" aria-controls="stats-body">▾</button></div>
             <div id="stats-body">
-            <div class="stats-grid">
+            <div class="stats-grid" aria-live="polite">
               <div class="stat"><span class="muted">Chats</span> <strong id="an-chats">-</strong></div>
               <div class="stat"><span class="muted">Q/A</span> <strong id="an-qa">-</strong></div>
               <div class="stat"><span class="muted">Đã trả lời</span> <strong id="an-answered">-</strong></div>
@@ -83,11 +83,11 @@
               <div class="stat"><span class="muted">Median</span> <strong id="an-ans-med">-</strong></div>
             </div>
             <div class="panel-title muted" style="margin-top:6px">Nguồn nhiều nhất</div>
-            <ul id="an-top-sources" class="list"></ul>
+            <ul id="an-top-sources" class="list" aria-live="polite"></ul>
             <div class="panel-title muted" style="margin-top:6px">Phiên bản nhiều nhất</div>
-            <ul id="an-top-versions" class="list"></ul>
+            <ul id="an-top-versions" class="list" aria-live="polite"></ul>
             <div class="panel-title muted" style="margin-top:6px">Ngôn ngữ nhiều nhất</div>
-            <ul id="an-top-langs" class="list"></ul>
+            <ul id="an-top-langs" class="list" aria-live="polite"></ul>
             </div>
           </div>
         </aside>
