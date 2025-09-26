@@ -626,6 +626,31 @@ function downloadBlob(name, blob) {
   URL.revokeObjectURL(url);
 }
 
+/***** Busy helpers *****/
+async function withBusy(btn, fn, busyText) {
+  let prev;
+  try {
+    if (btn) {
+      prev = btn.textContent;
+      btn.disabled = true;
+      if (busyText) btn.textContent = busyText;
+    }
+    return await fn();
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      if (typeof prev !== 'undefined') btn.textContent = prev;
+    }
+  }
+}
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /***** Settings helpers *****/
 function settingsLoadLocal() {
   try {
@@ -1099,7 +1124,7 @@ function escapeHtml(str) {
 }
 
 if (ingestBtn) ingestBtn.addEventListener('click', ingest);
-askBtn.addEventListener('click', ask);
+if (askBtn) askBtn.addEventListener('click', () => withBusy(askBtn, () => ask(), 'Đang gửi...'));
 
 if (dbSelect) dbSelect.addEventListener('change', async () => {
   const name = dbSelect.value;
@@ -1124,17 +1149,17 @@ if (chatExportMdBtn) chatExportMdBtn.addEventListener('click', () => exportChat(
 if (chatExportDbJsonBtn) chatExportDbJsonBtn.addEventListener('click', () => exportDb('json'));
 if (chatExportDbMdBtn) chatExportDbMdBtn.addEventListener('click', () => exportDb('md'));
 if (chatSearchBtn) chatSearchBtn.addEventListener('click', searchChats);
-if (ingestPathsBtn) ingestPathsBtn.addEventListener('click', ingestByPaths);
-if (uploadBtn) uploadBtn.addEventListener('click', uploadAndIngest);
-if (evalRunBtn) evalRunBtn.addEventListener('click', runEval);
+if (ingestPathsBtn) ingestPathsBtn.addEventListener('click', () => withBusy(ingestPathsBtn, () => ingestByPaths(), 'Đang thêm...'));
+if (uploadBtn) uploadBtn.addEventListener('click', () => withBusy(uploadBtn, () => uploadAndIngest(), 'Đang ingest...'));
+if (evalRunBtn) evalRunBtn.addEventListener('click', () => withBusy(evalRunBtn, () => runEval(), 'Đang chạy eval...'));
 if (fbUpBtn) fbUpBtn.addEventListener('click', () => { gFbScore = 1; });
 if (fbDownBtn) fbDownBtn.addEventListener('click', () => { gFbScore = -1; });
-if (fbSendBtn) fbSendBtn.addEventListener('click', sendFeedback);
+if (fbSendBtn) fbSendBtn.addEventListener('click', () => withBusy(fbSendBtn, () => sendFeedback(), 'Đang gửi...'));
 if (logsEnableCk) logsEnableCk.addEventListener('change', async () => { await setLogsEnabled(logsEnableCk.checked); });
 if (logsExportBtn) logsExportBtn.addEventListener('click', exportLogs);
 if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', loadAnalytics);
 if (logsSummaryBtn) logsSummaryBtn.addEventListener('click', loadLogsSummary);
-if (docDeleteBtn) docDeleteBtn.addEventListener('click', deleteSelectedDocs);
+if (docDeleteBtn) docDeleteBtn.addEventListener('click', () => withBusy(docDeleteBtn, () => deleteSelectedDocs(), 'Đang xóa...'));
 if (reloadBtn) reloadBtn.addEventListener('click', async () => { await loadDbs(); await loadChats(); await loadFilters(); await loadDocs(); settingsApplyToUI(); await loadLogsInfo(); await loadAnalytics(); await loadLogsSummary(); await loadHealth(); });
 
 // Settings events
