@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Provider switch (light)', () => {
   test('API: GET and POST /api/provider toggles value', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
 
     // Read current provider
     const cur = await page.evaluate(async () => {
@@ -38,7 +38,8 @@ test.describe('RAG e2e - Provider switch (light)', () => {
   });
 
   test('UI: changing dropdown updates footer label', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     // Ensure current shows in footer
     const footerLabel = page.locator('#provider-name');

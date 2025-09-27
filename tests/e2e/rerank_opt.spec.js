@@ -15,7 +15,8 @@ async function ingestSamples(page) {
 
 test.describe('RAG e2e - Reranker optimize (B9b)', () => {
   test('Reranker embed provider với rr_max_k=4, batch=4, threads=1', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     const db = 'rrdb';
     await ensureDb(page, db);

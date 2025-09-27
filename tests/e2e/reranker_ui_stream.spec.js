@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Reranker (UI stream light)', () => {
   test('UI sends rerank_enable/top_n and rr_* options (stream, mocked)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     // Ensure streaming mode
     const streamCk = page.locator('#ck-stream');

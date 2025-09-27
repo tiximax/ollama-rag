@@ -9,7 +9,8 @@ test.describe('RAG e2e - Search chats (UI light)', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
     });
 
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     await page.fill('#chat-search', 'hello');
     const respP = page.waitForResponse((r) => r.url().includes('/api/chats/search?') && r.request().method() === 'GET');

@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Rewrite (UI stream light)', () => {
   test('UI sends rewrite_enable=true and rewrite_n on stream', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     // streaming ON, rewrite ON
     const streamCk = page.locator('#ck-stream');

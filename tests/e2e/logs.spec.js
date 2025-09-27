@@ -15,7 +15,8 @@ async function ingestSamples(page) {
 
 test.describe('RAG e2e - Logs (B9a)', () => {
   test('Bật logs, hỏi, export JSONL có query/method/contexts_sources', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     const db = 'logsdb';
     await ensureDb(page, db);

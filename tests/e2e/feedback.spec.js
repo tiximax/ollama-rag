@@ -16,7 +16,8 @@ async function ingestSamples(page) {
 
 test.describe('RAG e2e - Feedback (B8)', () => {
   test('Gửi feedback 👍 với comment và xác nhận lưu', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     const db = 'fbdb';
     await ensureDb(page, db);

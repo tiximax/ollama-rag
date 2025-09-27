@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Feedback (UI light)', () => {
   test('Thumbs up + send posts feedback with sources', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     // Ensure streaming mode
     const streamCk = page.locator('#ck-stream');

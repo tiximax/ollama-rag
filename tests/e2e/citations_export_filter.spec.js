@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Citations export filters (B10b)', () => {
   test('Export citations chat với filter sources substring (không bắt buộc non-empty)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     const db = 'citedb2';
     await page.fill('#db-new-name', db);

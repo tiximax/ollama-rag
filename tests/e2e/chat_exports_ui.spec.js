@@ -4,9 +4,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Chat exports (UI light)', () => {
   test('Export chat json/md and DB json/md', async ({ page }) => {
-    await page.goto('/');
-
-    // Mock chats list (GET) and chat create (POST)
+    // Mock chats list (GET) and chat create (POST) — đăng ký trước khi load trang
     await page.route('**/api/chats*', async (route) => {
       const req = route.request();
       if (req.method() === 'GET') {
@@ -17,6 +15,9 @@ test.describe('RAG e2e - Chat exports (UI light)', () => {
       }
       return route.continue();
     });
+
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     // Create chat via UI
     await page.locator('#btn-chat-new').click();

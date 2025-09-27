@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Logs summary (UI light)', () => {
   test('Refresh summary shows totals and lists', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     // Mock summary API
     await page.route('**/api/logs/summary*', async (route) => {

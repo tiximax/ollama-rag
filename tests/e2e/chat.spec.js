@@ -7,7 +7,8 @@ const contextsSel = '#contexts .ctx';
 
 test.describe('RAG e2e - Chat sessions (light)', () => {
   test('Tạo/Rename/Delete chat + lưu Q/A khi hỏi', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     // Tạo chat mới
     await page.locator('#btn-chat-new').click();

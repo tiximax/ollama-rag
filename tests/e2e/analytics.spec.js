@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Analytics (B10a)', () => {
   test('DB analytics có qa_pairs >= 2 và top_sources chứa bitsness_sample.txt', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     const db = 'andb';
     // tạo DB

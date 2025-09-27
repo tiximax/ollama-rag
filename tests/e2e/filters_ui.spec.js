@@ -10,7 +10,8 @@ test.describe('RAG e2e - Filters (UI light)', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
     });
 
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     // Expect options to exist
     await expect(page.locator('#filter-langs')).toContainText('vi');

@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Citations export (B10b)', () => {
   test('Export citations chat (JSON) có cấu trúc hợp lệ', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     const db = 'citedb';
     await page.fill('#db-new-name', db);

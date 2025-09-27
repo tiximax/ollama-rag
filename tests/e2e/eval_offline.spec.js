@@ -31,7 +31,8 @@ function datasetJSON(dbName) {
 
 test.describe('RAG e2e - Offline Eval (B7)', () => {
   test('Eval offline (bm25) đạt recall@k = 1.0', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     const db = 'evaldb';
     await ensureDb(page, db);

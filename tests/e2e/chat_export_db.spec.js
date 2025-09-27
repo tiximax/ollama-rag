@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Chat export DB (light)', () => {
   test('Export DB JSON/MD returns a ZIP', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
+    await page.waitForFunction(() => window.__E2E_READY__ === true);
 
     // Tạo chat và ingest + hỏi nhanh để có dữ liệu ít nhất 1 file
     await page.locator('#btn-chat-new').click();
