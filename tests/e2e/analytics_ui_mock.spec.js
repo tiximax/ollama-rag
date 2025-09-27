@@ -4,8 +4,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Analytics UI (light)', () => {
   test('Refresh shows key metrics and top lists', async ({ page }) => {
-    await page.goto('/');
-
+    // Đăng ký route trước khi vào trang để tránh race với fetch init
     await page.route('**/api/analytics/db*', async (route) => {
       const payload = {
         db: 'default',
@@ -21,6 +20,8 @@ test.describe('RAG e2e - Analytics UI (light)', () => {
       };
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
     });
+
+    await page.goto('/?e2e=1');
 
     // Click refresh
     await page.locator('#btn-analytics-refresh').click();

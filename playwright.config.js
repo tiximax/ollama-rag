@@ -6,7 +6,7 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   retries: 0,
   reporter: 'list',
-  workers: 1,
+  workers: parseInt(process.env.PW_WORKERS || '1', 10),
   use: {
     baseURL: 'http://127.0.0.1:8000',
     trace: 'retain-on-failure'

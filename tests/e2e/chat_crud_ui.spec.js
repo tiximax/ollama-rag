@@ -31,7 +31,7 @@ test.describe('RAG e2e - Chat CRUD (UI light)', () => {
       return route.continue();
     });
 
-    await page.goto('/');
+    await page.goto('/?e2e=1');
 
     // Create: handle prompt
     page.once('dialog', async (d) => { await d.accept('My Chat'); });

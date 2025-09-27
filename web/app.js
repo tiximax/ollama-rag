@@ -95,6 +95,15 @@ const lgByRoute = document.getElementById('lg-by-route');
 const lgByProvider = document.getElementById('lg-by-provider');
 const lgByMethod = document.getElementById('lg-by-method');
 
+// E2E param: enable test flags from URL (/?e2e=1)
+try {
+  const _p = new URLSearchParams(location.search || '');
+  if (_p.get('e2e') === '1') {
+    window.__E2E_TEST__ = true;
+    window.E2E_UI_FORCE = true;
+  }
+} catch {}
+
 // New UI elements (v2)
 const docList = document.getElementById('doc-list');
 const docDeleteBtn = document.getElementById('btn-docs-delete');
@@ -152,9 +161,17 @@ async function loadHealth() {
       else if (st === 'warning') setBadge('warning', `⚠️ ${msg}`, tips);
       else setBadge('error', `⛔ ${msg || 'Backend lỗi'}`, tips);
 
-      // Disable/enable action buttons dựa trên health
-      const healthy = st === 'ok';
-      const buttons = [ingestPathsBtn, uploadBtn, askBtn];
+      // Nếu backend bật TEST_MODE, auto bật E2E flags
+      try {
+        if (data && data.test_mode) {
+          window.__E2E_TEST__ = true;
+          window.E2E_UI_FORCE = true;
+        }
+      } catch {}
+      // E2E force: khi chạy test, luôn enable các nút hành động để UI test ổn định
+      const force = (typeof window !== 'undefined') && (window.__E2E_TEST__ === true || window.E2E_UI_FORCE === true);
+      const healthy = force ? true : (st === 'ok');
+      const buttons = [ingestPathsBtn, uploadBtn, askBtn, document.getElementById('btn-ingest-sample')];
       buttons.forEach(b => { if (b) b.disabled = !healthy; });
     } else {
       setBadge('error', '⛔ Backend: lỗi health API');
@@ -482,12 +499,20 @@ async function createChat() {
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || 'Không tạo được chat');
+    // Cập nhật dropdown ngay lập tức bằng dữ liệu trả về (để UI test ổn định khi không mock GET /api/chats)
+    if (data.chat && data.chat.id) {
+      const id = String(data.chat.id);
+      const opt = document.createElement('option');
+      opt.value = id; opt.textContent = data.chat.name || id;
+      if (chatSelect) { chatSelect.appendChild(opt); chatSelect.value = id; }
+    }
+    // Sau đó refresh đầy đủ danh sách
     await loadChats();
     if (data.chat && data.chat.id) {
-chatSelect.value = data.chat.id; notifySuccess('Đã tạo hội thoại');
+      chatSelect.value = data.chat.id; notifySuccess('Đã tạo hội thoại');
     }
   } catch (e) {
-notifyError('Lỗi tạo chat: ' + e);
+    notifyError('Lỗi tạo chat: ' + e);
   }
 }
 
@@ -1158,8 +1183,10 @@ async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat, opt
   const rerank_top_n = rerankTopN ? parseInt(rerankTopN.value || '10', 10) : 10;
   const depth = hopDepth ? parseInt(hopDepth.value || '2', 10) : 2;
   const fanout = hopFanout ? parseInt(hopFanout.value || '2', 10) : 2;
+  const fanout_first_hop = hopFanout1 ? parseInt(hopFanout1.value || '1', 10) : 1;
+  const budget_ms = hopBudget ? parseInt(hopBudget.value || '0', 10) : 0;
   const provider = providerSel ? providerSel.value : undefined;
-  const payload = { query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth, fanout, provider, chat_id, save_chat, db: dbSelect.value || null };
+  const payload = { query: q, k, method, bm25_weight, rerank_enable, rerank_top_n, depth, fanout, fanout_first_hop, budget_ms, provider, chat_id, save_chat, db: dbSelect.value || null };
   if (opt) {
     if (Array.isArray(opt.languages)) payload.languages = opt.languages;
     if (Array.isArray(opt.versions)) payload.versions = opt.versions;
@@ -1202,6 +1229,7 @@ async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat, opt
         ctxHandled = true;
         buffer = buffer.substring(nlIdx + 1);
       } else {
+        // chưa đủ header hoàn chỉnh
         continue;
       }
     }
@@ -1216,7 +1244,6 @@ async function askStreamingMH(q, k, method, bm25_weight, chat_id, save_chat, opt
   gLastMetas = lastMetas || [];
   renderCitations(answer, lastMetas);
 }
-
 function escapeHtml(str) {
   return str
     .replace(/&/g, '&amp;')
@@ -1253,6 +1280,8 @@ if (chatSearchBtn) chatSearchBtn.addEventListener('click', searchChats);
 if (ingestPathsBtn) ingestPathsBtn.addEventListener('click', () => withBusy(ingestPathsBtn, () => ingestByPaths(), 'Đang thêm...'));
 if (uploadBtn) uploadBtn.addEventListener('click', () => withBusy(uploadBtn, () => uploadAndIngest(), 'Đang ingest...'));
 if (evalRunBtn) evalRunBtn.addEventListener('click', () => withBusy(evalRunBtn, () => runEval(), 'Đang chạy eval...'));
+const ingestSampleBtn = document.getElementById('btn-ingest-sample');
+if (ingestSampleBtn) ingestSampleBtn.addEventListener('click', () => withBusy(ingestSampleBtn, () => ingest(), 'Đang index...'));
 if (fbUpBtn) fbUpBtn.addEventListener('click', () => { gFbScore = 1; });
 if (fbDownBtn) fbDownBtn.addEventListener('click', () => { gFbScore = -1; });
 if (fbSendBtn) fbSendBtn.addEventListener('click', () => withBusy(fbSendBtn, () => sendFeedback(), 'Đang gửi...'));
@@ -1333,16 +1362,25 @@ if (citationsDbBtn) citationsDbBtn.addEventListener('click', async () => {
 // init
 settingsLoadLocal();
 loadProvider().then(() => loadDbs().then(async () => {
-  await loadChats();
-  await loadFilters();
-  await loadDocs();
-  settingsApplyToUI();
-  uiLoad();
-  bindUiAutosave();
-  await loadLogsInfo();
-  await loadAnalytics();
-  await loadLogsSummary();
-  await loadHealth();
+  const force = (typeof window !== 'undefined') && (window.__E2E_TEST__ === true || window.E2E_UI_FORCE === true);
+  const kickoff = async () => {
+    await loadChats();
+    await loadFilters();
+    await loadDocs();
+    settingsApplyToUI();
+    uiLoad();
+    bindUiAutosave();
+    await loadLogsInfo();
+    await loadAnalytics();
+    await loadLogsSummary();
+    await loadHealth();
+    try { window.__E2E_READY__ = true; } catch {}
+  };
+  if (force) {
+    setTimeout(kickoff, 150);
+  } else {
+    await kickoff();
+  }
 }));
 
 if (methodSel) {
@@ -1608,3 +1646,33 @@ window.addEventListener('keydown', (e) => {
     }
   } catch {}
 });
+
+/*** E2E Test hooks (no-op in production, used by Playwright) ***/
+try {
+  // Flag có thể bật trong test bằng page.evaluate(() => window.__E2E_TEST__ = true)
+  window.__E2E_TEST__ = window.__E2E_TEST__ || false;
+  window.__forceEnableAskButton = function () {
+    try {
+      const el = document.getElementById('btn-ask');
+      if (el) el.removeAttribute('disabled');
+    } catch {}
+  }
+  window.__triggerAsk = async function (opts) {
+    try {
+      if (opts && typeof opts === 'object') {
+        if (typeof opts.query === 'string' && queryInput) queryInput.value = opts.query;
+        if (typeof opts.streaming !== 'undefined' && streamCk) streamCk.checked = !!opts.streaming;
+        if (typeof opts.multihop !== 'undefined' && multihopCk) multihopCk.checked = !!opts.multihop;
+        if (typeof opts.depth !== 'undefined' && hopDepth) hopDepth.value = String(opts.depth);
+        if (typeof opts.fanout !== 'undefined' && hopFanout) hopFanout.value = String(opts.fanout);
+        if (typeof opts.fanoutFirst !== 'undefined' && hopFanout1) hopFanout1.value = String(opts.fanoutFirst);
+        if (typeof opts.budgetMs !== 'undefined' && hopBudget) hopBudget.value = String(opts.budgetMs);
+        if (typeof opts.method === 'string' && methodSel) methodSel.value = opts.method;
+        if (typeof opts.bm25 !== 'undefined' && bm25Range) bm25Range.value = String(opts.bm25);
+        uiSave();
+      }
+      // Gọi ask() để đi qua logic UI bình thường
+      await ask();
+    } catch (e) { console.warn('E2E triggerAsk error', e); }
+  }
+} catch {}

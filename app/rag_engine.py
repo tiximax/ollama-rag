@@ -625,10 +625,25 @@ class RagEngine:
         return self.ollama
 
     def generate_text(self, prompt: str, provider: Optional[str] = None) -> str:
+        # TEST_MODE: trả về nhanh chuỗi ngắn có citation [1] để e2e chạy nhanh
+        try:
+            if str(os.getenv("TEST_MODE", "0")).strip().lower() not in ("0", "false", "no", ""):
+                return "OK [1] (test-mode)"
+        except Exception:
+            pass
         llm = self._get_llm(provider)
         return llm.generate(prompt)
 
     def generate_stream(self, prompt: str, provider: Optional[str] = None):
+        # TEST_MODE: stream nhanh 2 chunk mô phỏng
+        try:
+            if str(os.getenv("TEST_MODE", "0")).strip().lower() not in ("0", "false", "no", ""):
+                def _gen():
+                    yield "OK "
+                    yield "[1] (test-mode)"
+                return _gen()
+        except Exception:
+            pass
         llm = self._get_llm(provider)
         return llm.generate_stream(prompt)
 

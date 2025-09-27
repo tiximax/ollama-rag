@@ -20,8 +20,8 @@
           <span class="label">Vector DB:</span>
           <select id="db-select" class="control" title="Chọn cơ sở dữ liệu (Vector DB)"></select>
           <input id="db-new-name" class="control" type="text" placeholder="Tên DB mới" title="Nhập tên DB (chỉ chữ/số/._-)" />
-          <button id="btn-db-create" class="btn" title="Tạo DB mới">DB mới</button>
-          <button id="btn-db-delete" class="btn danger" title="Xóa DB hiện tại (không thể hoàn tác)">Xóa DB</button>
+<button id="btn-db-create" class="btn" title="Tạo DB mới">Tạo DB</button>
+<button id="btn-db-delete" class="btn danger" title="Xóa DB hiện tại (không thể hoàn tác)">Xóa DB</button>
         </div>
         <div class="right">
 <input id="ingest-paths" class="control wide" type="text" placeholder="Đường dẫn hoặc URL (ví dụ data/docs/*.txt)" title="Hỗ trợ pattern *.txt, phân tách bằng dấu phẩy, hoặc nhập URL" />
@@ -32,6 +32,7 @@
           </label>
 <button id="btn-upload" class="btn" title="Ingest các file đã chọn vào DB">📥 Ingest file</button>
 <button id="btn-reload" class="btn" title="Tải lại danh sách DB, tài liệu và hội thoại">🔄 Tải lại</button>
+<button id="btn-ingest-sample" class="btn" title="Index tài liệu mẫu">Index tài liệu mẫu</button>
 <button id="btn-chat-export-db-json" class="btn" title="Xuất toàn bộ hội thoại của DB thành ZIP (JSON)">📦 Export DB (ZIP)</button>
           <span id="db-status" class="status"></span>
 <span id="backend-status" class="status" role="status" aria-live="polite"></span>
@@ -72,7 +73,8 @@
           </div>
 
 <div class="panel">
-            <div class="panel-title">📊 Thống kê nhanh <button id="btn-stats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="true" aria-controls="stats-body">▾</button></div>
+<div class="panel-title">📊 Thống kê nhanh <button id="btn-stats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="true" aria-controls="stats-body">▾</button>
+            <button id="btn-analytics-refresh" class="btn" title="Làm mới Analytics">Làm mới</button></div>
             <div id="stats-body">
             <div class="stats-grid" aria-live="polite">
               <div class="stat"><span class="muted">Chats</span> <strong id="an-chats">-</strong></div>
@@ -102,7 +104,7 @@
           </div>
           <div class="query-row">
             <input id="txt-query" type="text" placeholder="Nhập câu hỏi... (vd: 'Hướng dẫn cài đặt?')" class="query-input" title="Câu hỏi để truy vấn RAG" />
-            <button id="btn-ask" class="btn primary" title="Gửi truy vấn tới backend">Gửi</button>
+<button id="btn-ask" class="btn primary" title="Gửi truy vấn tới backend">Hỏi</button>
             <label class="opt" title="Top-K (số ngữ cảnh tối đa)">
               K: <input id="top-k" type="number" min="1" max="50" value="5" class="control" style="width:72px" />
             </label>
@@ -117,7 +119,8 @@
           </div>
 
 <div class="panel">
-            <div class="panel-title">Tùy chọn nâng cao <button id="btn-adv-reset" class="btn" title="Khôi phục thiết lập nâng cao về mặc định">Mặc định</button></div>
+<div class="panel-title">Tùy chọn nâng cao <button id="btn-adv-reset" class="btn" title="Khôi phục thiết lập nâng cao về mặc định">Mặc định</button>
+            <button id="btn-logs-summary-refresh" class="btn" title="Làm mới Logs Summary">Làm mới logs</button></div>
             <div class="adv-grid">
 <label class="opt" title="Phương pháp truy hồi: Vector (embedding), BM25 (từ khóa), Hybrid (kết hợp)">
                 Phương pháp: <span class="hint" title="vector: ngữ nghĩa | bm25: từ khoá chính xác | hybrid: kết hợp">(?)</span>

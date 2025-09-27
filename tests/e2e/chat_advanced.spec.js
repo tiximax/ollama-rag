@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Chat advanced (light)', () => {
   test('Search, export, delete-all', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
 
     // Tạo chat và ingest + hỏi để có dữ liệu
     await page.locator('#btn-chat-new').click();

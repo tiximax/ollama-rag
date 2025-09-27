@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Citations (UI)', () => {
   test('Render citations từ answer [n] (non-stream, mocked)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
 
     // Tắt streaming để đi qua đường /api/query
     const streamCk = page.locator('#ck-stream');

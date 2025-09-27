@@ -239,3 +239,18 @@ Mục tiêu: độ phủ tri thức & suy luận đa bước (multi-step), tríc
 - Khi thêm tính năng mới, theo rule: chạy test automation (MCP Playwright) và sửa cho đến khi pass.
 - Reranker dùng BGE v2 m3 ONNX nếu tải được model; nếu không, fallback cosine embedding từ Ollama embeddings.
 - Không commit khóa/token; đặt trong biến môi trường.
+
+## Tiến trình 2025-09-27 — B4: Multi-hop nâng cao (budget + fanout_first_hop)
+- Backend/API: ĐÃ HỖ TRỢ từ trước (engine.answer_multihop, MultiHopQueryRequest, /api/multihop_query, /api/stream_multihop_query).
+- UI: Bổ sung gửi tham số cho chế độ streaming (askStreamingMH) — thêm fanout_first_hop và budget_ms vào payload.
+- E2E (light): Thêm tests/e2e/multihop_adv_stream.spec.js để kiểm tra UI streaming gửi đúng payload (mocked route). Lưu ý: có thể flaky nếu backend health disable nút, test đã tự bật nút bằng evaluate.
+- Hướng dẫn chạy nhanh test mới (chỉ test mới):
+  - npm run test:e2e:light -- tests/e2e/multihop_adv_stream.spec.js
+- Gợi ý ENV (tuỳ chọn khi chạy toàn bộ): dùng scripts/run_e2e_light.ps1 để set LLM_MODEL=tinyllama và threads thấp.
+
+Đánh giá: B4 hoàn thành phần UI streaming + test light. Khi có thời gian, có thể mở rộng test để assert hiển thị contexts trong stream (hiện tại đã assert payload và kết quả text tối thiểu).
+
+## Tối ưu tốc độ e2e (2025-09-27)
+- Thêm TEST_MODE (ENV): khi TEST_MODE=1, engine.generate_text/engine.generate_stream trả về câu trả lời ngắn “OK [1] (test-mode)” (stream 2 chunk). Mục tiêu: rút ngắn thời gian e2e nhưng vẫn giữ đúng luồng UI/API và citations [1].
+- Cập nhật scripts/run_e2e_light.ps1 để auto bật TEST_MODE=1.
+- Khuyến nghị khi cần chạy nhanh: thêm --workers=3 vào lệnh Playwright.

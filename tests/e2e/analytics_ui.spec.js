@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Analytics UI (B10a)', () => {
   test('Analytics panel hiển thị số liệu cơ bản', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
 
     const db = 'andbui';
     await page.fill('#db-new-name', db);

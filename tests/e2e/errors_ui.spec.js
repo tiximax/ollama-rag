@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Errors (UI light)', () => {
   test('Non-stream /api/query 500 shows error text', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
 
     // Non-stream mode
     const streamCk = page.locator('#ck-stream');
@@ -21,7 +21,7 @@ test.describe('RAG e2e - Errors (UI light)', () => {
   });
 
   test('Streaming /api/stream_query non-OK shows error status text', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
 
     // Stream mode
     const streamCk = page.locator('#ck-stream');

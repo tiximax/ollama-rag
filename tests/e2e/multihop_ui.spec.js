@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Multi-hop (UI light)', () => {
   test('UI sends depth/fanout fields on multihop (non-stream, mocked)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
 
     // Ensure non-stream mode
     const streamCk = page.locator('#ck-stream');

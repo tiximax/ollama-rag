@@ -1166,6 +1166,7 @@ def api_health():
             "overall_status": "unknown",  # ok, warning, error
             "message": "",
             "suggestions": [],
+            "test_mode": bool((_os.getenv("TEST_MODE") or "").strip()),
             "ollama": {
                 "base_url": OLLAMA_BASE_URL,
                 "ok": False,

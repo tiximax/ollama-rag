@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('RAG e2e - Citations (UI light variants)', () => {
   test('Render [1],[2] and ignore out-of-range [99]; request carries languages/versions', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
 
     // Ensure non-stream (use /api/query)
     const streamCk = page.locator('#ck-stream');
