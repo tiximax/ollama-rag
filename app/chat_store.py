@@ -12,7 +12,9 @@ ISO = "%Y-%m-%dT%H:%M:%S.%fZ"
 
 
 def now_iso() -> str:
-    return datetime.utcnow().strftime(ISO)
+    # Use timezone-aware UTC to avoid deprecation warnings
+    from datetime import timezone
+    return datetime.now(timezone.utc).strftime(ISO)
 
 
 class ChatStore:

@@ -46,3 +46,5 @@ requirements-lock.txt
 # Env & secrets
 .env
 .env.*
+# Allow template to be committed
+!/.env.example

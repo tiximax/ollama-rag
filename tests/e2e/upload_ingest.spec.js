@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // Upload + ingest e2e: tạo DB, upload 1 file .txt trong bộ nhớ, xác nhận index xong, stream hỏi và hiển thị contexts
 
-test.describe('RAG e2e - Upload & Ingest (B15)', () => {
+test.describe('RAG e2e - Upload & Ingest (B15) @heavy', () => {
   test('Upload file .txt và hỏi (stream) hiển thị contexts', async ({ page }) => {
     await page.goto('/');
 

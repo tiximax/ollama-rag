@@ -19,22 +19,38 @@ Yêu cầu:
 - Windows / macOS / Linux
 - Python 3.10+
 - Node.js + npm (tùy chọn để chạy Playwright e2e)
-- Ollama đã cài và đang chạy (http://localhost:11434)
+- Ollama (http://localhost:11434) hoặc OpenAI API Key
 
-Cài đặt (Quick Start Windows):
+Cài đặt nhanh (Windows):
 0) Sao chép cấu hình mẫu:
    copy .env.example .env
 
 1) Bootstrap môi trường:
    PowerShell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
    (Tùy chọn e2e: thêm tham số -WithE2E)
+   Hoặc cài thủ công: pip install -r requirements.txt
 
-2) Chạy server (tự động load .env):
-   PowerShell -ExecutionPolicy Bypass -File .\scripts\run_server.ps1
-   (hoặc: uvicorn app.main:app --host 127.0.0.1 --port 8000)
+2) Cấu hình .env:
+   - Sửa PROVIDER=ollama hoặc openai
+   - Nếu dùng OpenAI, đặt OPENAI_API_KEY (đừng echo/log khóa)
 
-3) Mở UI:
-   http://127.0.0.1:8000
+3) Nếu dùng Ollama: kéo models mặc định
+   ollama pull llama3.1:8b
+   ollama pull nomic-embed-text
+
+4) Chạy server (ổn định – không reload):
+   PowerShell -ExecutionPolicy Bypass -File .\start_server.ps1
+   Hoặc: py -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+
+5) Mở UI:
+   http://127.0.0.1:8001
+
+Health/Preflight
+- Backend health API: GET /api/health
+  - provider: ollama|openai
+  - overall_status: ok|warning|error
+  - suggestions: gợi ý khắc phục (ollama serve, ollama pull, cấu hình OPENAI_API_KEY)
+- UI hiển thị chip "Backend" (màu sắc + tooltip). Khi backend chưa OK, các nút Ingest/Gửi sẽ bị vô hiệu hóa tạm thời.
 
 Chạy Desktop (Windows):
 - Dev: PowerShell -ExecutionPolicy Bypass -File .\scripts\run_desktop.ps1
@@ -48,7 +64,9 @@ Triển khai qua Cloudflare Tunnel (tùy chọn)
   + Mẫu biến môi trường: deploy/docker/.env.example (KHÔNG commit token thật)
 - cloudflared native trên Windows: deploy/cloudflared/config.yml.example + start-local.ps1
 
-Chạy Playwright e2e
+Chạy tests
+- Unit/Smoke: py -m pip install httpx && py -m unittest -q
+- Playwright e2e (tùy chọn):
 - Cài đặt một lần: npm install && npm run playwright:install
 - Chế độ nhẹ (khuyến nghị khi dev, giảm CPU):
   PowerShell:
@@ -57,7 +75,31 @@ Chạy Playwright e2e
 - Chạy full (gồm Multi-hop, Reranker):
     npm run test:e2e
 
+## Benchmark Notes
+
+- Chạy benchmark matrix nội bộ với rounds=3 để làm mượt kết quả.
+- Ma trận mặc định: bm25 non-stream, bm25 stream, hybrid non-stream, hybrid stream.
+- Đo thời gian:
+  - Non-stream: tổng latency của /api/query
+  - Stream: t_ctx (thời gian tới header [[CTXJSON]]), t_ans (tổng thời gian stream)
+- Cách chạy:
+  - python scripts/bench/bench_matrix.py --rounds 3
+  - Kết quả CSV: bench-results/bench-matrix-YYYYMMDD-HHMMSS.csv
+
+Troubleshooting
+- Lỗi 11434 (Connection refused): chạy ollama serve; kiểm tra http://localhost:11434/api/tags
+- Thiếu model: ollama pull nomic-embed-text, ollama pull llama3.1:8b
+- Dùng OpenAI: set OPENAI_API_KEY rồi đổi Provider sang openai
+- UI không cập nhật: hard refresh (Ctrl+F5)
+
+Ví dụ benchmark (rounds=3 trên máy local, tinyllama):
+- bm25 non-stream (latency s): ~1.07 median
+- bm25 stream (t_ctx/t_ans s): ~0.016 / ~1.07 median
+- hybrid non-stream (latency s): ~5.19 median
+- hybrid stream (t_ctx/t_ans s): ~3.56 / ~5.13 median
+
 UI — các điều khiển chính
+- Menu Hỗ trợ: Quick Start (hướng dẫn 3 bước)
 - Provider: Ollama | OpenAI (generate/stream dùng provider đã chọn; Embeddings luôn dùng Ollama/local)
 - Phương pháp: vector | bm25 | hybrid (+ w BM25)
 - Reranker: bật/tắt + Top-N
@@ -87,7 +129,7 @@ Chat advanced (Search / Export / Delete All)
   - Xóa tất cả: curl -X DELETE "http://127.0.0.1:8000/api/chats?db=<DB>"
 
 Provider switch (Ollama/OpenAI)
-- UI: chọn Provider ở thanh điều khiển (mặc định: Ollama). Embeddings luôn chạy bằng Ollama để đảm bảo local & không cần re-index.
+- UI: chọn Provider ở thanh điều khiển (mặc định: Ollama). Embeddings mặc định dùng Ollama local.
 - API nhanh:
   - GET /api/provider → { provider }
   - POST /api/provider { name: "ollama" | "openai" }
@@ -143,13 +185,16 @@ Multi-hop nâng cao (budget_ms, fanout_first_hop)
 }
 ```
 
-Cấu hình (tùy chọn .env):
+Cấu hình (.env):
 - Xem file .env.example → copy thành .env và chỉnh sửa theo nhu cầu.
+- PROVIDER=ollama|openai (mặc định ollama)
 - OLLAMA_BASE_URL=http://localhost:11434
 - LLM_MODEL=llama3.1:8b, EMBED_MODEL=nomic-embed-text
 - CHUNK_SIZE=800, CHUNK_OVERLAP=120
 - OLLAMA_CONNECT_TIMEOUT=5, OLLAMA_READ_TIMEOUT=180, OLLAMA_MAX_RETRIES=3, OLLAMA_RETRY_BACKOFF=0.6
 - OLLAMA_NUM_THREAD, OLLAMA_NUM_CTX, OLLAMA_NUM_GPU (tinh chỉnh hiệu năng)
+- OPENAI_BASE_URL=https://api.openai.com/v1, OPENAI_MODEL=gpt-4o-mini, OPENAI_API_KEY={{OPENAI_API_KEY}}
+- PERSIST_DIR (ví dụ data/chroma) hoặc PERSIST_ROOT=data/kb + DB_NAME=default
 - ORT_INTRA_OP_THREADS, ORT_INTER_OP_THREADS (giới hạn luồng ONNXRuntime)
 - VECTOR_BACKEND=chroma|faiss (mặc định chroma). Dùng faiss: pip install faiss-cpu
 - GEN_CACHE_ENABLE=1, GEN_CACHE_TTL=86400 (bộ nhớ đệm trả lời để giảm chi phí)

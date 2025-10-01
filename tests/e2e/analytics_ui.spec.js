@@ -41,8 +41,8 @@ test.describe('RAG e2e - Analytics UI (B10a)', () => {
       }
     }, { db, chatId });
 
-    // bấm Refresh
-    await page.getByRole('button', { name: 'Refresh' }).click();
+    // bấm Refresh (target analytics button explicitly)
+    await page.locator('#btn-analytics-refresh').click();
 
     // kiểm tra UI có số liệu
     await expect(page.locator('#an-chats')).not.toHaveText('-', { timeout: 10000 });

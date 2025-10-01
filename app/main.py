@@ -782,6 +782,32 @@ def api_get_filters(db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== Docs APIs =====
+class DocsDeleteRequest(BaseModel):
+    sources: List[str]
+    db: Optional[str] = None
+
+
+@app.get("/api/docs")
+def api_docs_list(db: Optional[str] = None):
+    try:
+        if db:
+            engine.use_db(db)
+        return {"db": engine.db_name, "docs": engine.list_sources()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/docs")
+def api_docs_delete(req: DocsDeleteRequest):
+    try:
+        if req.db:
+            engine.use_db(req.db)
+        n = engine.delete_sources(req.sources or [])
+        return {"status": "ok", "deleted_sources": n, "db": engine.db_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ===== Offline Evaluation API =====
 class EvalQueryItem(BaseModel):
     query: str
@@ -909,8 +935,8 @@ def api_logs_export(db: Optional[str] = None, since: Optional[str] = None, until
         if db:
             engine.use_db(db)
         content = exp_logger.export(engine.db_name, since=since, until=until)
-        from datetime import datetime as _dt
-        ts = _dt.utcnow().strftime("%Y%m%d-%H%M%S")
+        from datetime import datetime as _dt, timezone as _tz
+        ts = _dt.now(_tz.utc).strftime("%Y%m%d-%H%M%S")
         filename = f"logs-{engine.db_name}-{ts}.jsonl"
         return Response(content=content, media_type="application/jsonl", headers={
             "Content-Disposition": f"attachment; filename={filename}"
@@ -1082,60 +1108,34 @@ def api_citations_db(format: str = 'json', db: Optional[str] = None, sources: Op
     try:
         if db:
             engine.use_db(db)
-        # build per-chat files and zip
+        # Build per-chat files and zip strictly from JSON citations for consistency
         import io, zipfile, json
         mem = io.BytesIO()
+        fmt = (format or 'json').lower()
         with zipfile.ZipFile(mem, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
             for ch in chat_store.list(engine.db_name):
                 cid = ch.get('id')
                 if not cid:
                     continue
-                content_resp = api_citations_chat(cid, format=format, db=engine.db_name, sources=sources, versions=versions, languages=languages)  # type: ignore[arg-type]
-                # content_resp có thể là Response (csv/md) hoặc list json
+                # Always get JSON rows first, then render per requested format
+                rows = api_citations_chat(cid, format='json', db=engine.db_name, sources=sources, versions=versions, languages=languages)  # type: ignore[arg-type]
+                rows = rows if isinstance(rows, list) else []
                 fname_base = ch.get('name') or cid
-                if format.lower() == 'csv':
-                    if hasattr(content_resp, 'body_iterator'):
-                        # Không thể dễ dàng đọc body từ Response streaming trong server context, nên dựng lại CSV tại đây
-                        # fallback: tạo CSV từ list JSON
-                        data = api_citations_chat(cid, format='json', db=engine.db_name)  # type: ignore[arg-type]
-                        rows = data if isinstance(data, list) else []
-                        import csv
-                        from io import StringIO
-                        s = StringIO()
-                        w = csv.DictWriter(s, fieldnames=['n','source','version','language','chunk','question','excerpt','ts'])
-                        w.writeheader()
-                        for r in rows:
-                            w.writerow(r)
-                        zf.writestr(f"{fname_base}-citations.csv", s.getvalue())
-                    else:
-                        # nếu trả JSON list
-                        rows = content_resp if isinstance(content_resp, list) else []
-                        import csv
-                        from io import StringIO
-                        s = StringIO()
-                        w = csv.DictWriter(s, fieldnames=['n','source','version','language','chunk','question','excerpt','ts'])
-                        w.writeheader()
-                        for r in rows:
-                            w.writerow(r)
-                        zf.writestr(f"{fname_base}-citations.csv", s.getvalue())
-                elif format.lower() in ('md','markdown'):
-                    if hasattr(content_resp, 'body_iterator'):
-                        # không xử lý body_iterator ở đây; tạo lại từ JSON
-                        rows = api_citations_chat(cid, format='json', db=engine.db_name)  # type: ignore[arg-type]
-                        lines = ['# Citations']
-                        for c in rows:
-                            lines.append(f"- [{c.get('n')}] {c.get('source')} v={c.get('version')} lang={c.get('language')} chunk={c.get('chunk')}")
-                        zf.writestr(f"{fname_base}-citations.md", "\n".join(lines))
-                    else:
-                        # list
-                        rows = content_resp if isinstance(content_resp, list) else []
-                        lines = ['# Citations']
-                        for c in rows:
-                            lines.append(f"- [{c.get('n')}] {c.get('source')} v={c.get('version')} lang={c.get('language')} chunk={c.get('chunk')}")
-                        zf.writestr(f"{fname_base}-citations.md", "\n".join(lines))
+                if fmt == 'csv':
+                    import csv
+                    from io import StringIO
+                    s = StringIO()
+                    w = csv.DictWriter(s, fieldnames=['n','source','version','language','chunk','question','excerpt','ts'])
+                    w.writeheader()
+                    for r in rows:
+                        w.writerow(r)
+                    zf.writestr(f"{fname_base}-citations.csv", s.getvalue())
+                elif fmt in ('md','markdown'):
+                    lines = ['# Citations']
+                    for c in rows:
+                        lines.append(f"- [{c.get('n')}] {c.get('source')} v={c.get('version')} lang={c.get('language')} chunk={c.get('chunk')}")
+                    zf.writestr(f"{fname_base}-citations.md", "\n".join(lines))
                 else:
-                    # json
-                    rows = content_resp if isinstance(content_resp, list) else []
                     zf.writestr(f"{fname_base}-citations.json", json.dumps(rows, ensure_ascii=False, indent=2))
         mem.seek(0)
         return Response(content=mem.read(), media_type='application/zip', headers={'Content-Disposition': f'attachment; filename={engine.db_name}-citations.zip'})
@@ -1301,6 +1301,93 @@ def api_set_provider(req: ProviderName):
         return {"provider": engine.default_provider}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Health API =====
+@app.get("/api/health")
+def api_health():
+    """Trả trạng thái backend mở rộng: Ollama/OpenAI, models, và gợi ý khắc phục."""
+    try:
+        from .ollama_client import OLLAMA_BASE_URL, LLM_MODEL, EMBED_MODEL  # type: ignore
+        import requests  # type: ignore
+        import os as _os
+        
+        status = {
+            "provider": engine.default_provider,
+            "db": engine.db_name,
+            "overall_status": "unknown",  # ok, warning, error
+            "message": "",
+            "suggestions": [],
+            "ollama": {
+                "base_url": OLLAMA_BASE_URL,
+                "ok": False,
+                "error": None,
+                "models": {"available": [], "required": [LLM_MODEL, EMBED_MODEL], "missing": []}
+            },
+            "openai": {"configured": False, "ok": False, "error": None},
+        }
+        
+        # Check Ollama
+        try:
+            r = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3)
+            if r.ok:
+                status["ollama"]["ok"] = True
+                try:
+                    tags_data = r.json()
+                    available_models = [m.get("name", "").split(":")[0] for m in tags_data.get("models", [])]
+                    status["ollama"]["models"]["available"] = list(set(available_models))
+                    
+                    # Check required models
+                    required = [LLM_MODEL.split(":")[0], EMBED_MODEL.split(":")[0]]
+                    missing = [m for m in required if m not in available_models]
+                    status["ollama"]["models"]["missing"] = missing
+                    
+                    if missing:
+                        status["ollama"]["error"] = f"Thiếu models: {', '.join(missing)}"
+                        status["ollama"]["ok"] = False
+                except Exception:
+                    status["ollama"]["error"] = "Không đọc được danh sách models"
+                    status["ollama"]["ok"] = False
+            else:
+                status["ollama"]["error"] = f"HTTP {r.status_code}"
+        except Exception as e:
+            status["ollama"]["error"] = str(e)
+        
+        # Check OpenAI config
+        if (_os.getenv("OPENAI_API_KEY") or "").strip():
+            status["openai"]["configured"] = True
+            status["openai"]["ok"] = True
+        
+        # Determine overall status and suggestions
+        provider = status["provider"].lower()
+        if provider == "ollama":
+            if status["ollama"]["ok"]:
+                status["overall_status"] = "ok"
+                status["message"] = "Ollama sẵn sàng"
+            elif "Thiếu models" in (status["ollama"].get("error") or ""):
+                status["overall_status"] = "warning"
+                status["message"] = "Ollama thiếu models"
+                missing = status["ollama"]["models"]["missing"]
+                status["suggestions"] = [f"Chạy: ollama pull {m}" for m in missing]
+            else:
+                status["overall_status"] = "error"
+                status["message"] = "Ollama không khả dụng"
+                status["suggestions"] = ["Chạy: ollama serve", "Hoặc đổi Provider sang OpenAI"]
+        elif provider == "openai":
+            if status["openai"]["ok"]:
+                status["overall_status"] = "ok"
+                status["message"] = "OpenAI sẵn sàng"
+            else:
+                status["overall_status"] = "error"
+                status["message"] = "OpenAI chưa cấu hình"
+                status["suggestions"] = ["Set biến môi trường OPENAI_API_KEY", "Hoặc đổi Provider sang Ollama"]
+        else:
+            status["overall_status"] = "error"
+            status["message"] = "Provider không hợp lệ"
+            status["suggestions"] = ["Chọn Provider: Ollama hoặc OpenAI"]
+        
+        return status
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
