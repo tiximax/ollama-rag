@@ -98,6 +98,20 @@ Ví dụ benchmark (rounds=3 trên máy local, tinyllama):
 - hybrid non-stream (latency s): ~5.19 median
 - hybrid stream (t_ctx/t_ans s): ~3.56 / ~5.13 median
 
+Tài liệu (Documentation)
+- docs/INSTALLATION.md — Cài đặt chi tiết
+- docs/CONFIGURATION.md — Cấu hình & biến môi trường
+- docs/ARCHITECTURE.md — Kiến trúc hệ thống
+- docs/API_REFERENCE.md — Tài liệu API
+- docs/WEB_UI_GUIDE.md — Hướng dẫn Web UI
+- docs/DESKTOP_GUIDE.md — Ứng dụng Desktop
+- docs/DEPLOYMENT.md — Triển khai (Cloudflare/Docker)
+- docs/SECURITY.md — Bảo mật
+- docs/TROUBLESHOOTING.md — Xử lý sự cố
+- docs/RELEASE_PROCESS.md — Quy trình phát hành
+- docs/CONTRIBUTING.md — Đóng góp
+- docs/FAQ.md — Câu hỏi thường gặp
+
 UI — các điều khiển chính
 - Menu Hỗ trợ: Quick Start (hướng dẫn 3 bước)
 - Provider: Ollama | OpenAI (generate/stream dùng provider đã chọn; Embeddings luôn dùng Ollama/local)
