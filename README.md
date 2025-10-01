@@ -4,6 +4,10 @@
 
 Ứng dụng RAG nhẹ sử dụng FastAPI + ChromaDB + Ollama (LLM + Embeddings), chạy web UI cục bộ.
 
+---
+
+Sản phẩm sẵn sàng dùng thực tế: Quick Start, Đóng gói Desktop, và Triển khai qua Docker/Cloudflare đã được chuẩn hóa bên dưới.
+
 Tính năng:
 - Ingest tài liệu .txt trong data/docs
 - Tìm kiếm theo vector (ChromaDB)
@@ -14,34 +18,34 @@ Tính năng:
 Yêu cầu:
 - Windows / macOS / Linux
 - Python 3.10+
-- Node.js + npm (để chạy Playwright e2e)
+- Node.js + npm (tùy chọn để chạy Playwright e2e)
 - Ollama đã cài và đang chạy (http://localhost:11434)
 
-Cài đặt:
-1) Cài Python packages
-   pip install -r requirements.txt
+Cài đặt (Quick Start Windows):
+0) Sao chép cấu hình mẫu:
+   copy .env.example .env
 
-2) Cài Playwright (tùy chọn, để test e2e)
-   npm install
-   npm run playwright:install
+1) Bootstrap môi trường:
+   PowerShell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+   (Tùy chọn e2e: thêm tham số -WithE2E)
 
-3) Kéo model Ollama (mặc định):
-   ollama pull llama3.1:8b
-   ollama pull nomic-embed-text
-
-4) Ingest mẫu:
-   python scripts/ingest.py
-
-5) Chạy server (khuyến nghị dùng script PowerShell trên Windows):
+2) Chạy server (tự động load .env):
    PowerShell -ExecutionPolicy Bypass -File .\scripts\run_server.ps1
-   (hoặc dùng uvicorn: uvicorn app.main:app --host 127.0.0.1 --port 8000)
+   (hoặc: uvicorn app.main:app --host 127.0.0.1 --port 8000)
 
-6) Mở UI:
+3) Mở UI:
    http://127.0.0.1:8000
+
+Chạy Desktop (Windows):
+- Dev: PowerShell -ExecutionPolicy Bypass -File .\scripts\run_desktop.ps1
+- Build gói Desktop (one-folder, kèm server nhúng):
+  PowerShell -ExecutionPolicy Bypass -File .\scripts\build_desktop.ps1
+  → chạy file: .\dist\OllamaRAGDesktop\OllamaRAGDesktop.exe
 
 Triển khai qua Cloudflare Tunnel (tùy chọn)
 - Xem deploy/README.md
 - Docker compose: deploy/docker/docker-compose.yml (cần CF_TUNNEL_TOKEN)
+  + Mẫu biến môi trường: deploy/docker/.env.example (KHÔNG commit token thật)
 - cloudflared native trên Windows: deploy/cloudflared/config.yml.example + start-local.ps1
 
 Chạy Playwright e2e
@@ -140,11 +144,12 @@ Multi-hop nâng cao (budget_ms, fanout_first_hop)
 ```
 
 Cấu hình (tùy chọn .env):
+- Xem file .env.example → copy thành .env và chỉnh sửa theo nhu cầu.
 - OLLAMA_BASE_URL=http://localhost:11434
-- LLM_MODEL=llama3.1:8b
-- EMBED_MODEL=nomic-embed-text
-- CHUNK_SIZE=800
-- CHUNK_OVERLAP=120
+- LLM_MODEL=llama3.1:8b, EMBED_MODEL=nomic-embed-text
+- CHUNK_SIZE=800, CHUNK_OVERLAP=120
 - OLLAMA_CONNECT_TIMEOUT=5, OLLAMA_READ_TIMEOUT=180, OLLAMA_MAX_RETRIES=3, OLLAMA_RETRY_BACKOFF=0.6
 - OLLAMA_NUM_THREAD, OLLAMA_NUM_CTX, OLLAMA_NUM_GPU (tinh chỉnh hiệu năng)
 - ORT_INTRA_OP_THREADS, ORT_INTER_OP_THREADS (giới hạn luồng ONNXRuntime)
+- VECTOR_BACKEND=chroma|faiss (mặc định chroma). Dùng faiss: pip install faiss-cpu
+- GEN_CACHE_ENABLE=1, GEN_CACHE_TTL=86400 (bộ nhớ đệm trả lời để giảm chi phí)

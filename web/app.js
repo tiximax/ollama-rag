@@ -1,3 +1,165 @@
+// ===== Toast Notification System =====
+const ToastManager = {
+  container: null,
+  
+  init() {
+    if (!this.container) {
+      this.container = document.createElement('div');
+      this.container.className = 'toast-container';
+      document.body.appendChild(this.container);
+    }
+  },
+  
+  show(message, type = 'info', duration = 4000) {
+    this.init();
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const icon = this._getIcon(type);
+    const iconEl = document.createElement('span');
+    iconEl.className = 'toast-icon';
+    iconEl.textContent = icon;
+    
+    const messageEl = document.createElement('div');
+    messageEl.className = 'toast-message';
+    messageEl.textContent = message;
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'toast-close';
+    closeBtn.textContent = '×';
+    closeBtn.onclick = () => this.remove(toast);
+    
+    toast.appendChild(iconEl);
+    toast.appendChild(messageEl);
+    toast.appendChild(closeBtn);
+    
+    this.container.appendChild(toast);
+    
+    if (duration > 0) {
+      setTimeout(() => this.remove(toast), duration);
+    }
+    
+    return toast;
+  },
+  
+  remove(toast) {
+    toast.classList.add('toast-exit');
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 300);
+  },
+  
+  success(message, duration) { return this.show(message, 'success', duration); },
+  error(message, duration) { return this.show(message, 'error', duration); },
+  warning(message, duration) { return this.show(message, 'warning', duration); },
+  info(message, duration) { return this.show(message, 'info', duration); },
+  
+  _getIcon(type) {
+    const icons = {
+      success: '✅',
+      error: '❌',
+      warning: '⚠️',
+      info: 'ℹ️'
+    };
+    return icons[type] || icons.info;
+  }
+};
+
+// ===== Loading Overlay =====
+const LoadingOverlay = {
+  overlay: null,
+  
+  show(text = 'Đang xử lý...') {
+    if (!this.overlay) {
+      this.overlay = document.createElement('div');
+      this.overlay.className = 'loading-overlay';
+      
+      const content = document.createElement('div');
+      content.className = 'loading-content';
+      
+      const spinner = document.createElement('div');
+      spinner.className = 'loading-spinner-large';
+      
+      const textEl = document.createElement('div');
+      textEl.className = 'loading-text';
+      textEl.textContent = text;
+      
+      content.appendChild(spinner);
+      content.appendChild(textEl);
+      this.overlay.appendChild(content);
+    } else {
+      const textEl = this.overlay.querySelector('.loading-text');
+      if (textEl) textEl.textContent = text;
+    }
+    
+    document.body.appendChild(this.overlay);
+  },
+  
+  hide() {
+    if (this.overlay && this.overlay.parentNode) {
+      this.overlay.parentNode.removeChild(this.overlay);
+    }
+  },
+  
+  updateText(text) {
+    if (this.overlay) {
+      const textEl = this.overlay.querySelector('.loading-text');
+      if (textEl) textEl.textContent = text;
+    }
+  }
+};
+
+// ===== Button Loading State =====
+function setButtonLoading(button, loading) {
+  if (loading) {
+    button.disabled = true;
+    button.dataset.originalText = button.textContent;
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner';
+    button.textContent = '';
+    button.appendChild(spinner);
+    button.appendChild(document.createTextNode(button.dataset.originalText));
+  } else {
+    button.disabled = false;
+    if (button.dataset.originalText) {
+      button.textContent = button.dataset.originalText;
+      delete button.dataset.originalText;
+    }
+  }
+}
+
+// ===== Keyboard Shortcuts =====
+document.addEventListener('keydown', (e) => {
+  // Ctrl/Cmd + Enter: Submit query
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    const queryInput = document.getElementById('txt-query');
+    if (document.activeElement === queryInput && queryInput.value.trim()) {
+      e.preventDefault();
+      document.getElementById('btn-ask')?.click();
+    }
+  }
+  
+  // Escape: Clear result
+  if (e.key === 'Escape') {
+    const resultDiv = document.getElementById('result');
+    const contextsDiv = document.getElementById('contexts');
+    const citationsDiv = document.getElementById('citations');
+    if (resultDiv) resultDiv.textContent = '';
+    if (contextsDiv) contextsDiv.innerHTML = '';
+    if (citationsDiv) citationsDiv.innerHTML = '';
+  }
+  
+  // Ctrl/Cmd + K: Focus search
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    document.getElementById('txt-query')?.focus();
+  }
+});
+
+// ===== DOM Elements =====
 const ingestBtn = document.getElementById('btn-ingest');
 const askBtn = document.getElementById('btn-ask');
 const queryInput = document.getElementById('txt-query');
@@ -161,7 +323,7 @@ async function setLogsEnabled(enabled) {
       throw new Error(data.detail || resp.status);
     }
   } catch (e) {
-    alert('Không thể bật/tắt logs: ' + e);
+    ToastManager.error('Không thể bật/tắt logs: ' + e);
   }
 }
 
@@ -175,7 +337,7 @@ async function exportLogs() {
     const name = `logs-${dbSelect.value || 'default'}.jsonl`;
     downloadFile(name, text, 'application/jsonl');
   } catch (e) {
-    alert('Lỗi export logs: ' + e);
+    ToastManager.error('Lỗi export logs: ' + e);
   }
 }
 
@@ -191,7 +353,7 @@ async function setProvider(name) {
       if (providerName) providerName.textContent = data.provider || name;
     }
   } catch (e) {
-    alert('Lỗi đổi provider: ' + e);
+    ToastManager.error('Lỗi đổi provider: ' + e);
   }
 }
 
@@ -225,14 +387,14 @@ async function useDb(name) {
     if (!resp.ok) throw new Error(data.detail || 'Không thể đổi DB');
     await loadDbs();
   } catch (e) {
-    alert('Lỗi đổi DB: ' + e);
+    ToastManager.error('Lỗi đổi DB: ' + e);
   }
 }
 
 async function createDb() {
   const name = (dbNewName.value || '').trim();
   if (!name) {
-    alert('Nhập tên DB mới');
+    ToastManager.warning('Nhập tên DB mới');
     return;
   }
   try {
@@ -247,8 +409,9 @@ async function createDb() {
     await loadDbs();
     dbSelect.value = name;
     await useDb(name);
+    ToastManager.success(`Đã tạo DB "${name}"`);
   } catch (e) {
-    alert('Lỗi tạo DB: ' + e);
+    ToastManager.error('Lỗi tạo DB: ' + e);
   }
 }
 
@@ -260,8 +423,9 @@ async function deleteDb() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || 'Không thể xóa DB');
     await loadDbs();
+    ToastManager.success(`Đã xóa DB "${name}"`);
   } catch (e) {
-    alert('Lỗi xóa DB: ' + e);
+    ToastManager.error('Lỗi xóa DB: ' + e);
   }
 }
 
@@ -305,7 +469,7 @@ async function createChat() {
       chatSelect.value = data.chat.id;
     }
   } catch (e) {
-    alert('Lỗi tạo chat: ' + e);
+    ToastManager.error('Lỗi tạo chat: ' + e);
   }
 }
 
@@ -327,7 +491,7 @@ async function renameChat() {
     await loadChats();
     chatSelect.value = id;
   } catch (e) {
-    alert('Lỗi rename chat: ' + e);
+    ToastManager.error('Lỗi rename chat: ' + e);
   }
 }
 
@@ -342,8 +506,9 @@ async function deleteChat() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || 'Không xóa được chat');
     await loadChats();
+    ToastManager.success('Đã xóa chat');
   } catch (e) {
-    alert('Lỗi xóa chat: ' + e);
+    ToastManager.error('Lỗi xóa chat: ' + e);
   }
 }
 
@@ -356,9 +521,9 @@ async function deleteAllChats() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || 'Không xóa được');
     await loadChats();
-    alert(`Đã xóa ${data.deleted} chats.`);
+    ToastManager.success(`Đã xóa ${data.deleted} chats`);
   } catch (e) {
-    alert('Lỗi xóa tất cả: ' + e);
+    ToastManager.error('Lỗi xóa tất cả: ' + e);
   }
 }
 
@@ -484,7 +649,9 @@ function downloadBlob(name, blob) {
 async function uploadAndIngest() {
   try {
     const files = fileUploadInput && fileUploadInput.files ? Array.from(fileUploadInput.files) : [];
-    if (!files.length) { alert('Chọn file để upload'); return; }
+    if (!files.length) { ToastManager.warning('Chọn file để upload'); return; }
+    LoadingOverlay.show('Uploading files...');
+    setButtonLoading(uploadBtn, true);
     const fd = new FormData();
     files.forEach(f => fd.append('files', f));
     if (dbSelect.value) fd.append('db', dbSelect.value);
@@ -493,15 +660,19 @@ async function uploadAndIngest() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || resp.status);
     resultDiv.textContent = `Đã upload ${data.saved.length} file, index ${data.chunks_indexed} chunks.`;
+    ToastManager.success(`Upload thành công ${data.saved.length} file`);
     await loadFilters();
   } catch (e) {
-    alert('Lỗi upload: ' + e);
+    ToastManager.error('Lỗi upload: ' + e);
+  } finally {
+    LoadingOverlay.hide();
+    setButtonLoading(uploadBtn, false);
   }
 }
 
 async function exportChat(format) {
   const id = chatSelect.value;
-  if (!id) { alert('Chưa chọn chat'); return; }
+  if (!id) { ToastManager.warning('Chưa chọn chat'); return; }
   try {
     const params = new URLSearchParams();
     if (dbSelect.value) params.set('db', dbSelect.value);
@@ -518,15 +689,16 @@ async function exportChat(format) {
       const text = await resp.text();
 downloadFile(`chat-${id}.md`, text, 'text/markdown');
     }
+    ToastManager.success('Export thành công');
   } catch (e) {
-    alert('Lỗi export: ' + e);
+    ToastManager.error('Lỗi export: ' + e);
   }
 }
 
 async function sendFeedback() {
   try {
     const score = gFbScore;
-    if (!score) { alert('Chọn 👍 hoặc 👎 trước khi gửi'); return; }
+    if (!score) { ToastManager.warning('Chọn 👍 hoặc 👎 trước khi gửi'); return; }
     const provider = providerSel ? providerSel.value : undefined;
     const method = methodSel ? methodSel.value : undefined;
     const k = parseInt(topkInput.value || '5', 10);
@@ -558,9 +730,9 @@ async function sendFeedback() {
     }
     if (fbComment) fbComment.value = '';
     gFbScore = 0;
-    alert('Đã gửi feedback!');
+    ToastManager.success('Đã gửi feedback!');
   } catch (e) {
-    alert('Lỗi gửi feedback: ' + e);
+    ToastManager.error('Lỗi gửi feedback: ' + e);
   }
 }
 
@@ -575,14 +747,15 @@ async function exportDb(format) {
     const blob = new Blob([buf], { type: 'application/zip' });
     const name = `db-${dbSelect.value || 'default'}-${format}.zip`;
     downloadBlob(name, blob);
+    ToastManager.success('Export DB thành công');
   } catch (e) {
-    alert('Lỗi export DB: ' + e);
+    ToastManager.error('Lỗi export DB: ' + e);
   }
 }
 
 async function searchChats() {
   const q = (chatSearchInput.value || '').trim();
-  if (!q) { alert('Nhập từ khóa'); return; }
+  if (!q) { ToastManager.warning('Nhập từ khóa'); return; }
   try {
     const params = new URLSearchParams();
     if (dbSelect.value) params.set('db', dbSelect.value);
@@ -593,7 +766,7 @@ async function searchChats() {
     const results = data.results || [];
     resultDiv.textContent = `Search '${q}': ${results.length} chats có kết quả.`;
   } catch (e) {
-    alert('Lỗi search: ' + e);
+    ToastManager.error('Lỗi search: ' + e);
   }
 }
 
@@ -623,7 +796,9 @@ function renderCitations(answerText, metas) {
 }
 
 async function ingest() {
+  LoadingOverlay.show('Đang index tài liệu...');
   resultDiv.textContent = 'Đang index tài liệu...';
+  setButtonLoading(ingestBtn, true);
   try {
     const payload = { paths: ['data/docs'], db: dbSelect.value || null };
     if (ingestVersion && ingestVersion.value.trim()) payload.version = ingestVersion.value.trim();
@@ -635,22 +810,30 @@ async function ingest() {
     const data = await resp.json();
     if (resp.ok) {
       resultDiv.textContent = `Đã index ${data.chunks_indexed} chunks.`;
+      ToastManager.success(`Index thành công ${data.chunks_indexed} chunks`);
       await loadFilters();
     } else {
       resultDiv.textContent = `Lỗi ingest: ${data.detail}`;
+      ToastManager.error(`Lỗi ingest: ${data.detail}`);
     }
   } catch (e) {
     resultDiv.textContent = `Lỗi kết nối server: ${e}`;
+    ToastManager.error(`Lỗi kết nối server: ${e}`);
+  } finally {
+    LoadingOverlay.hide();
+    setButtonLoading(ingestBtn, false);
   }
 }
 
 async function ingestByPaths() {
   const raw = (ingestPaths && ingestPaths.value || '').trim();
   if (!raw) {
-    alert('Nhập Paths (có thể là glob, phân tách bằng dấu ,)');
+    ToastManager.warning('Nhập Paths (có thể là glob, phân tách bằng dấu ,)');
     return;
   }
+  LoadingOverlay.show('Đang index tài liệu...');
   resultDiv.textContent = 'Đang index tài liệu (custom paths)...';
+  setButtonLoading(ingestPathsBtn, true);
   try {
     const list = raw.split(',').map(s => s.trim()).filter(Boolean);
     const payload = { paths: list, db: dbSelect.value || null };
@@ -663,12 +846,18 @@ async function ingestByPaths() {
     const data = await resp.json();
     if (resp.ok) {
       resultDiv.textContent = `Đã index ${data.chunks_indexed} chunks.`;
+      ToastManager.success(`Index thành công ${data.chunks_indexed} chunks`);
       await loadFilters();
     } else {
       resultDiv.textContent = `Lỗi ingest: ${data.detail}`;
+      ToastManager.error(`Lỗi ingest: ${data.detail}`);
     }
   } catch (e) {
     resultDiv.textContent = `Lỗi kết nối server: ${e}`;
+    ToastManager.error(`Lỗi kết nối server: ${e}`);
+  } finally {
+    LoadingOverlay.hide();
+    setButtonLoading(ingestPathsBtn, false);
   }
 }
 
@@ -686,6 +875,7 @@ async function ask() {
     resultDiv.textContent = 'Vui lòng nhập câu hỏi';
     return;
   }
+  setButtonLoading(askBtn, true);
   resultDiv.textContent = 'Đang truy vấn...';
   contextsDiv.innerHTML = '';
 
@@ -747,6 +937,9 @@ async function ask() {
     }
   } catch (e) {
     resultDiv.textContent = `Lỗi kết nối server: ${e}`;
+    ToastManager.error(`Lỗi kết nối server: ${e}`);
+  } finally {
+    setButtonLoading(askBtn, false);
   }
 }
 
@@ -930,7 +1123,7 @@ if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', loadAnaly
 if (logsSummaryBtn) logsSummaryBtn.addEventListener('click', loadLogsSummary);
 if (citationsChatBtn) citationsChatBtn.addEventListener('click', async () => {
   const id = chatSelect.value;
-  if (!id) { alert('Chưa chọn chat'); return; }
+  if (!id) { ToastManager.warning('Chưa chọn chat'); return; }
   try {
     const params = new URLSearchParams();
     if (dbSelect.value) params.set('db', dbSelect.value);
@@ -942,7 +1135,8 @@ if (citationsChatBtn) citationsChatBtn.addEventListener('click', async () => {
     if (!resp.ok) throw new Error('Export citations lỗi');
     const text = await resp.text();
     downloadFile(`citations-${id}.json`, text, 'application/json');
-  } catch (e) { alert('Lỗi export citations: ' + e); }
+    ToastManager.success('Export citations thành công');
+  } catch (e) { ToastManager.error('Lỗi export citations: ' + e); }
 });
 if (citationsDbBtn) citationsDbBtn.addEventListener('click', async () => {
   try {
@@ -958,7 +1152,8 @@ if (citationsDbBtn) citationsDbBtn.addEventListener('click', async () => {
     const blob = new Blob([buf], { type: 'application/zip' });
     const name = `citations-${dbSelect.value || 'default'}.zip`;
     downloadBlob(name, blob);
-  } catch (e) { alert('Lỗi export citations DB: ' + e); }
+    ToastManager.success('Export citations DB thành công');
+  } catch (e) { ToastManager.error('Lỗi export citations DB: ' + e); }
 });
 
 // init

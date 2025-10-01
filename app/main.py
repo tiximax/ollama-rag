@@ -1,8 +1,13 @@
-from fastapi import FastAPI, HTTPException, Response, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Response, UploadFile, File, Form, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, field_validator
 from typing import List, Optional, Dict, Any
+from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import os
 import json
 import uuid
@@ -11,8 +16,101 @@ from .rag_engine import RagEngine
 from .chat_store import ChatStore
 from .feedback_store import FeedbackStore
 from .exp_logger import ExperimentLogger
+from .validators import validate_safe_path, validate_db_name, validate_version_string
+from .constants import (
+    MAX_UPLOAD_SIZE_BYTES,
+    RATE_LIMIT_QUERY,
+    RATE_LIMIT_INGEST,
+    RATE_LIMIT_UPLOAD,
+    DEFAULT_CORS_ORIGINS,
+    APP_VERSION
+)
+from .exceptions import (
+    OllamaRAGException,
+    ValidationError,
+    IngestError,
+    RetrievalError,
+    GenerationError,
+    ChatError,
+    DatabaseError,
+    get_http_status_code
+)
 
 app = FastAPI(title="Ollama RAG App")
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Middleware cho request size limit (10MB)
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, max_size: int = MAX_UPLOAD_SIZE_BYTES):
+        super().__init__(app)
+        self.max_size = max_size
+    
+    async def dispatch(self, request: Request, call_next):
+        if request.headers.get('content-length'):
+            content_length = int(request.headers['content-length'])
+            if content_length > self.max_size:
+                return Response(
+                    status_code=413,
+                    content=json.dumps({"error": "Request too large", "max_size_mb": self.max_size // (1024 * 1024)}),
+                    media_type="application/json"
+                )
+        return await call_next(request)
+
+app.add_middleware(RequestSizeLimitMiddleware)
+
+# CORS middleware
+allowed_origins = os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+# Security headers middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        # Remove server header for security
+        if 'Server' in response.headers:
+            del response.headers['Server']
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Exception handlers
+@app.exception_handler(OllamaRAGException)
+async def ollama_rag_exception_handler(request: Request, exc: OllamaRAGException):
+    """Handle custom Ollama RAG exceptions."""
+    status_code = get_http_status_code(exc)
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "error": exc.__class__.__name__,
+            "message": str(exc),
+            "detail": getattr(exc, 'detail', None)
+        }
+    )
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError):
+    """Handle ValueError from validators."""
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error": "ValidationError",
+            "message": str(exc)
+        }
+    )
 
 # Khởi tạo engine với thiết lập Multi-DB (tương thích ngược)
 # Nếu PERSIST_DIR được set (ví dụ data/chroma) sẽ dùng như db mặc định trong root của nó
@@ -31,14 +129,66 @@ def root():
     return FileResponse("web/index.html")
 
 
+@app.get("/health")
+def health_check():
+    """Health check endpoint for monitoring."""
+    from datetime import datetime
+    
+    ollama_healthy = engine.ollama.health_check()
+    db_healthy = os.path.exists(engine.persist_dir)
+    
+    status = "healthy" if (ollama_healthy and db_healthy) else "degraded"
+    
+    return {
+        "status": status,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "db": engine.db_name,
+        "persist_dir": engine.persist_dir,
+        "ollama_connected": ollama_healthy,
+        "db_exists": db_healthy,
+        "version": APP_VERSION
+    }
+
+
 class IngestRequest(BaseModel):
     paths: List[str] = ["data/docs"]
     db: str | None = None
     version: Optional[str] = None
+    
+    @field_validator('paths')
+    @classmethod
+    def validate_paths(cls, v):
+        """Validate paths để ngăn path traversal."""
+        if not v:
+            raise ValueError("Paths list cannot be empty")
+        for p in v:
+            try:
+                # Validate path an toàn
+                validate_safe_path(p)
+            except ValueError as e:
+                raise ValueError(f"Invalid path '{p}': {str(e)}") from e
+        return v
+    
+    @field_validator('db')
+    @classmethod
+    def validate_db_name_field(cls, v):
+        """Validate DB name."""
+        if v is not None and not validate_db_name(v):
+            raise ValueError(f"Invalid DB name: {v}. Must be alphanumeric with _, -, . only (1-64 chars)")
+        return v
+    
+    @field_validator('version')
+    @classmethod
+    def validate_version_field(cls, v):
+        """Validate version string."""
+        if v is not None and not validate_version_string(v):
+            raise ValueError(f"Invalid version: {v}. Must be alphanumeric with _, -, . only")
+        return v
 
 
 @app.post("/api/ingest")
-def api_ingest(req: IngestRequest):
+@limiter.limit(RATE_LIMIT_INGEST)
+def api_ingest(req: IngestRequest, request: Request):
     try:
         if req.db:
             engine.use_db(req.db)
@@ -49,7 +199,8 @@ def api_ingest(req: IngestRequest):
 
 # ===== Upload & Ingest =====
 @app.post("/api/upload")
-async def api_upload(files: List[UploadFile] = File(...), db: Optional[str] = Form(None), version: Optional[str] = Form(None)):
+@limiter.limit(RATE_LIMIT_UPLOAD)
+async def api_upload(request: Request, files: List[UploadFile] = File(...), db: Optional[str] = Form(None), version: Optional[str] = Form(None)):
     try:
         if db:
             engine.use_db(db)
@@ -123,7 +274,8 @@ class MultiHopQueryRequest(BaseModel):
 
 
 @app.post("/api/query")
-def api_query(req: QueryRequest):
+@limiter.limit(RATE_LIMIT_QUERY)
+def api_query(req: QueryRequest, request: Request):
     try:
         if req.db:
             engine.use_db(req.db)
@@ -194,7 +346,8 @@ def api_query(req: QueryRequest):
 
 
 @app.post("/api/stream_query")
-def api_stream_query(req: QueryRequest):
+@limiter.limit(RATE_LIMIT_QUERY)
+def api_stream_query(req: QueryRequest, request: Request):
     try:
         def gen():
             import time as _t

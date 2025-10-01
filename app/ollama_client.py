@@ -58,6 +58,17 @@ class OllamaClient:
             raise last_exc
         raise RuntimeError("Request failed without exception")
 
+    def health_check(self) -> bool:
+        """Check if Ollama service is healthy."""
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/tags",
+                timeout=CONNECT_TIMEOUT
+            )
+            return response.status_code == 200
+        except Exception:
+            return False
+
     def embed(self, texts: List[str]) -> List[List[float]]:
         embeddings: List[List[float]] = []
         for t in texts:
