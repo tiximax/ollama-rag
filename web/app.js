@@ -485,6 +485,12 @@ checkBackend();
 setInterval(checkBackend, 30000);
 
 // ===== Initialize =====
+// Force close all modals on load
+Object.values(modals).forEach(modal => {
+  if (modal) modal.hidden = true;
+});
+document.body.style.overflow = '';
+
 loadDBs().then(() => {
   loadChats();
 });
