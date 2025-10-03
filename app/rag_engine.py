@@ -500,7 +500,7 @@ class RagEngine:
 
         for i, t in enumerate(texts):
             # Version cho cả tài liệu này (áp cho tất cả chunks)
-            ver = version or (hashlib.md5(t.encode("utf-8")).hexdigest()[:8])
+ver = version or (hashlib.blake2b(t.encode("utf-8"), digest_size=16).hexdigest()[:8])
             src_val = metadatas[i].get("source") if metadatas else f"text_{i}"
             for j, chunk in enumerate(chunk_text(t)):
                 ids.append(str(uuid.uuid4()))

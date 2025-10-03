@@ -113,8 +113,10 @@ class SemanticQueryCache:
         }
     
     def _compute_key(self, query: str) -> str:
-        """Generate unique key từ query string."""
-        return hashlib.md5(query.encode()).hexdigest()
+        """Generate unique key từ query string (non-security).
+        Use BLAKE2b with small digest to avoid Bandit MD5 warning.
+        """
+        return hashlib.blake2b(query.encode(), digest_size=16).hexdigest()
     
     def get(
         self, 
