@@ -420,6 +420,10 @@ input, select, textarea { font-family: inherit; }
   justify-content: center;
 }
 
+.modal[hidden] {
+  display: none !important;
+}
+
 .modal-overlay {
   position: absolute;
   inset: 0;
