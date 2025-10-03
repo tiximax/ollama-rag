@@ -1,0 +1,30 @@
+# 🚀 Quick Install Commands
+# Copy these commands and paste into PowerShell AS ADMINISTRATOR
+
+cd C:\Users\pc\Downloads\ollama-rag
+
+# Install Ollama Service
+.\nssm.exe install OllamaService ollama serve
+.\nssm.exe set OllamaService DisplayName "Ollama LLM Service"
+.\nssm.exe set OllamaService Start SERVICE_AUTO_START
+.\nssm.exe set OllamaService AppStdout "C:\Users\pc\Downloads\ollama-rag\logs\ollama.log"
+.\nssm.exe set OllamaService AppStderr "C:\Users\pc\Downloads\ollama-rag\logs\ollama_error.log"
+
+# Install Backend Service
+.\nssm.exe install OllamaRAGBackend python "-m uvicorn src.api.server:app --host 0.0.0.0 --port 8000"
+.\nssm.exe set OllamaRAGBackend DisplayName "Ollama RAG Backend"
+.\nssm.exe set OllamaRAGBackend Start SERVICE_AUTO_START
+.\nssm.exe set OllamaRAGBackend AppDirectory "C:\Users\pc\Downloads\ollama-rag"
+.\nssm.exe set OllamaRAGBackend AppStdout "C:\Users\pc\Downloads\ollama-rag\logs\backend.log"
+.\nssm.exe set OllamaRAGBackend AppStderr "C:\Users\pc\Downloads\ollama-rag\logs\backend_error.log"
+.\nssm.exe set OllamaRAGBackend DependOnService OllamaService
+
+# Start Services
+Start-Service OllamaService
+Start-Service OllamaRAGBackend
+
+# Check Status
+Get-Service OllamaService, OllamaRAGBackend | Format-Table Name, Status, StartType, DisplayName -AutoSize
+
+Write-Host "`n✅ Services installed and started!" -ForegroundColor Green
+Write-Host "They will auto-start on Windows boot!" -ForegroundColor Cyan

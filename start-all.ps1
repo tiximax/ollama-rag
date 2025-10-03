@@ -73,6 +73,7 @@ Write-Host "[3/3] ☁️  Starting Cloudflare Tunnel..." -ForegroundColor Yellow
 $tunnelProcess = Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue
 if ($tunnelProcess) {
     Write-Host "  ✅ Cloudflare Tunnel already running (PID: $($tunnelProcess.Id))" -ForegroundColor Green
+}
 } else {
     Write-Host "  Starting Quick Tunnel (no domain needed)..." -ForegroundColor Cyan
     Start-Process powershell -ArgumentList @(
