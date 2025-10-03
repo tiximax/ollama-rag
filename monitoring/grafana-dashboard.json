@@ -289,6 +289,89 @@
           {"format": "reqps"},
           {"format": "short"}
         ]
+      },
+      {
+        "id": 13,
+        "title": "🧠 Semantic Cache Hit Rate (%)",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 36, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "(sum(rate(ollama_rag_semcache_hits_total[5m])) / (sum(rate(ollama_rag_semcache_hits_total[5m])) + sum(rate(ollama_rag_semcache_misses_total[5m])))) * 100",
+            "refId": "A"
+          }
+        ],
+        "options": {"graphMode": "area", "colorMode": "value", "textMode": "value_and_name"},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 30, "color": "yellow"},
+                {"value": 70, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 14,
+        "title": "🧠 Semantic Cache Size",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 36, "w": 6, "h": 4},
+        "targets": [
+          {"expr": "ollama_rag_semcache_size", "refId": "A"}
+        ],
+        "options": {"graphMode": "area", "colorMode": "value"},
+        "fieldConfig": {"defaults": {"unit": "short"}}
+      },
+      {
+        "id": 15,
+        "title": "🧠 Semantic Cache Fill Ratio",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 36, "w": 6, "h": 4},
+        "targets": [
+          {"expr": "ollama_rag_semcache_fill_ratio * 100", "refId": "A"}
+        ],
+        "options": {"graphMode": "area", "colorMode": "value"},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 50, "color": "yellow"},
+                {"value": 80, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 16,
+        "title": "🧠 Semantic Cache: Hits vs Misses (rate)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 40, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "sum by (type) (rate(ollama_rag_semcache_hits_total[5m]))",
+            "legendFormat": "hit {{type}}",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(ollama_rag_semcache_misses_total[5m])",
+            "legendFormat": "misses",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "events/sec"},
+          {"format": "short"}
+        ],
+        "tooltip": {"shared": true, "sort": 2}
       }
     ]
   },
