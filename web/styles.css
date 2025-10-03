@@ -44,6 +44,30 @@
   --font-mono: 'SF Mono', Consolas, monospace;
 }
 
+/* ===== Light Theme ===== */
+[data-theme="light"] {
+  /* Colors - Light Mode */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --bg-tertiary: #e9ecef;
+  --text-primary: #1a1a1a;
+  --text-secondary: #6c757d;
+  --text-tertiary: #adb5bd;
+  --accent-blue: #0066cc;
+  --accent-green: #059669;
+  --accent-purple: #7c3aed;
+  --accent-red: #dc2626;
+  --surface-user: #e3f2fd;
+  --surface-ai: #f3f4f6;
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-medium: rgba(0, 0, 0, 0.12);
+  
+  /* Shadows - Softer for light theme */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+
 /* ===== Reset & Base ===== */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; }

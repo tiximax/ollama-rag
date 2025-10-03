@@ -128,6 +128,28 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
+// ===== Theme System =====
+const themeSelect = document.getElementById('settings-theme');
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+  if (themeSelect) themeSelect.value = theme;
+}
+
+function loadTheme() {
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  setTheme(savedTheme);
+}
+
+themeSelect?.addEventListener('change', (e) => {
+  setTheme(e.target.value);
+  showToast(`✨ Theme changed to ${e.target.value}`, 'success');
+});
+
+// Load theme on init
+loadTheme();
+
 // ===== Load DBs =====
 async function loadDBs() {
   try {
