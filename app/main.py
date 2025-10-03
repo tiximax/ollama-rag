@@ -32,6 +32,7 @@ from .exp_logger import ExperimentLogger
 from .feedback_store import FeedbackStore
 from .logging_utils import setup_secure_logging
 from .rag_engine import RagEngine
+from .semantic_cache import SemanticQueryCache
 from .validators import validate_db_name, validate_safe_path, validate_version_string
 
 # ✅ FIX BUG #1: Setup secure logging để tự động mask API keys
@@ -186,6 +187,26 @@ exp_logger = ExperimentLogger(engine.persist_root)
 metrics.set_app_info(version=APP_VERSION, db_type="chromadb")
 
 
+# ✅ Startup event - Initialize Semantic Cache 🧠
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application resources on startup."""
+    # Initialize Semantic Query Cache
+    semantic_cache_enabled = os.getenv("USE_SEMANTIC_CACHE", "true").lower() == "true"
+    if semantic_cache_enabled:
+        app.state.semantic_cache = SemanticQueryCache(
+            similarity_threshold=float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.95")),
+            max_size=int(os.getenv("SEMANTIC_CACHE_SIZE", "1000")),
+            ttl=float(os.getenv("SEMANTIC_CACHE_TTL", "3600")),  # 1 hour default
+        )
+        print(
+            f"[SEMANTIC CACHE] ENABLED: threshold={app.state.semantic_cache.similarity_threshold}, max_size={app.state.semantic_cache.max_size}, ttl={app.state.semantic_cache.ttl}s"
+        )
+    else:
+        app.state.semantic_cache = None
+        print("[SEMANTIC CACHE] DISABLED. Set USE_SEMANTIC_CACHE=true to enable.")
+
+
 @app.get("/", tags=["Web UI"])
 def root():
     return FileResponse("web/index.html")
@@ -200,31 +221,41 @@ def get_metrics():
 @app.get("/api/cache-stats", tags=["Monitoring"])
 def get_cache_stats():
     """📊 Cache statistics endpoint - View cache performance metrics.
-    
+
     Returns:
         Cache hit rates, sizes, and performance stats for all caches
     """
     try:
         # Get filters cache stats from engine
-        filters_cache_stats = engine._filters_cache.stats() if hasattr(engine, '_filters_cache') else {}
-        
+        filters_cache_stats = (
+            engine._filters_cache.stats() if hasattr(engine, '_filters_cache') else {}
+        )
+
         # Check if generation cache is enabled
         gen_cache_enabled = os.getenv("GEN_CACHE_ENABLE", "0") == "1"
         gen_cache_info = {
             "enabled": gen_cache_enabled,
-            "path": os.path.join(engine.persist_root, "gen_cache.db") if gen_cache_enabled else None,
+            "path": (
+                os.path.join(engine.persist_root, "gen_cache.db") if gen_cache_enabled else None
+            ),
         }
-        
+
+        # Get semantic cache stats 🧠
+        semantic_cache_stats = None
+        if hasattr(app.state, 'semantic_cache') and app.state.semantic_cache:
+            semantic_cache_stats = app.state.semantic_cache.stats()
+
         # Get database info
         db_info = {
             "current_db": engine.db_name,
             "persist_root": engine.persist_root,
             "available_dbs": engine.list_dbs() if hasattr(engine, 'list_dbs') else [],
         }
-        
+
         return {
             "filters_cache": filters_cache_stats,
             "generation_cache": gen_cache_info,
+            "semantic_cache": semantic_cache_stats,
             "database": db_info,
             "timestamp": time.time(),
         }
@@ -539,6 +570,30 @@ def api_query(req: QueryRequest, request: Request):
         import time as _t
 
         t0 = int(_t.time() * 1000)
+
+        # 🧠 Check semantic cache first (if enabled)
+        cached_result = None
+        cache_metadata = None
+        if hasattr(app.state, 'semantic_cache') and app.state.semantic_cache:
+            try:
+                cached_result, cache_metadata = app.state.semantic_cache.get(
+                    req.query, engine.ollama.embed, return_metadata=True
+                )
+                if cached_result:
+                    # Cache HIT! 🎉 Return immediately
+                    print(
+                        f"🔥 Semantic Cache HIT! Type: {cache_metadata['cache_type']}, Similarity: {cache_metadata['similarity']:.4f}"
+                    )
+                    # Add cache metadata to result
+                    cached_result["cache_hit"] = True
+                    cached_result["cache_metadata"] = cache_metadata
+                    cached_result["db"] = engine.db_name
+                    return cached_result
+            except Exception as e:
+                # If cache check fails, just continue with normal query
+                print(f"⚠️ Semantic cache check failed: {e}")
+
+        # Cache MISS or cache disabled - Execute normal query
         result = engine.answer(
             req.query,
             top_k=req.k,
@@ -571,6 +626,16 @@ def api_query(req: QueryRequest, request: Request):
             except Exception:
                 pass
         result["db"] = engine.db_name
+        result["cache_hit"] = False  # Mark as fresh query
+
+        # 🧠 Cache the result (if semantic cache enabled)
+        if hasattr(app.state, 'semantic_cache') and app.state.semantic_cache:
+            try:
+                app.state.semantic_cache.set(req.query, result, engine.ollama.embed)
+                print(f"💾 Query cached: {req.query[:50]}...")
+            except Exception as e:
+                print(f"⚠️ Failed to cache query: {e}")
+
         # Log
         try:
             t1 = int(_t.time() * 1000)
@@ -599,6 +664,7 @@ def api_query(req: QueryRequest, request: Request):
                     "contexts_sources": [
                         (m or {}).get("source", "") for m in result.get("metadatas", [])
                     ],
+                    "cache_hit": False,
                 },
             )
         except Exception:
