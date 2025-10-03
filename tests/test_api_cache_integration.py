@@ -123,3 +123,24 @@ def test_cache_stats_endpoint(client):
     data = r.json()
     # semantic_cache should not be null with our state
     assert data.get("semantic_cache") is not None
+
+
+def test_cache_clear_by_db(client):
+    # Seed an exact entry
+    q = {"query": "What is ML?", "k": 3}
+    r1 = client.post("/api/query", json=q)
+    assert r1.status_code == 200
+    d1 = r1.json()
+    assert d1["cache_hit"] is False
+
+    # Clear by DB prefix (testdb)
+    rc = client.post("/api/cache/clear", json={"db": "testdb"})
+    assert rc.status_code == 200
+    info = rc.json()
+    assert "size" in info
+
+    # Query again should be MISS (recache)
+    r2 = client.post("/api/query", json=q)
+    assert r2.status_code == 200
+    d2 = r2.json()
+    assert d2["cache_hit"] is False

@@ -445,6 +445,48 @@ def update_cache_config(req: CacheConfigUpdate):
     }
 
 
+class CacheClearRequest(BaseModel):
+    """Yêu cầu clear cache theo namespace, db, hoặc toàn bộ."""
+
+    all: bool | None = None
+    namespace: str | None = None
+    db: str | None = None
+
+
+@app.post("/api/cache/clear", tags=["Monitoring"])
+def clear_cache(req: CacheClearRequest):
+    """Clear semantic cache theo namespace/DB hoặc toàn bộ.
+
+    Behavior:
+    - If all=True: clear all entries
+    - Else if namespace provided: clear that exact namespace
+    - Else if db provided: clear all namespaces starting with "db:"
+    - Else: clear current namespace for active engine DB/stamp
+    """
+    cache = getattr(app.state, "semantic_cache", None)
+    if cache is None:
+        return JSONResponse(status_code=400, content={"error": "Semantic cache disabled"})
+
+    removed = 0
+    if req.all:
+        cache.clear()
+        removed = 0  # unknown exact count; could expose before/after
+    elif req.namespace:
+        removed = cache.clear_namespace(req.namespace, prefix=False)
+    elif req.db:
+        removed = cache.clear_namespace(f"{req.db}:", prefix=True)
+    else:
+        ns = f"{engine.db_name}:{getattr(engine, '_corpus_stamp', '0')}"
+        removed = cache.clear_namespace(ns, prefix=False)
+
+    try:
+        metrics.update_semcache_size(len(cache), cache.max_size)
+    except Exception:
+        pass
+
+    return {"status": "ok", "removed": removed, "size": len(cache)}
+
+
 @app.get("/health", tags=["System"])
 def health_check():
     """✅ Enhanced health check endpoint with detailed metrics.

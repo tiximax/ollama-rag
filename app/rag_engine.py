@@ -500,7 +500,7 @@ class RagEngine:
 
         for i, t in enumerate(texts):
             # Version cho cả tài liệu này (áp cho tất cả chunks)
-ver = version or (hashlib.blake2b(t.encode("utf-8"), digest_size=16).hexdigest()[:8])
+            ver = version or (hashlib.blake2b(t.encode("utf-8"), digest_size=16).hexdigest()[:8])
             src_val = metadatas[i].get("source") if metadatas else f"text_{i}"
             for j, chunk in enumerate(chunk_text(t)):
                 ids.append(str(uuid.uuid4()))
@@ -1512,9 +1512,9 @@ ver = version or (hashlib.blake2b(t.encode("utf-8"), digest_size=16).hexdigest()
             v = m.get("version")
             if isinstance(v, str) and v.strip():
                 vers_set.add(v.strip())
-            l = m.get("language")
-            if isinstance(l, str) and l.strip():
-                langs_set.add(l.strip())
+            lang_val = m.get("language")
+            if isinstance(lang_val, str) and lang_val.strip():
+                langs_set.add(lang_val.strip())
 
         langs = sorted(langs_set)
         vers = sorted(vers_set)
