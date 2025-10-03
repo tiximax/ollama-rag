@@ -7,7 +7,7 @@ from typing import Any
 # ✅ Load environment variables from .env file
 from dotenv import load_dotenv
 
-load_dotenv()  # Load .env before any other imports that use os.getenv()
+load_dotenv(override=True)  # Load .env and override values on reload
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -193,7 +193,7 @@ metrics.set_app_info(version=APP_VERSION, db_type="chromadb")
 
 
 # ✅ Startup event - Initialize Semantic Cache 🧠
-# Last updated: 2025-10-03 - Force reload to load .env via dotenv
+# Last updated: 2025-10-03 15:34Z - Force reload to load .env (override=True) via dotenv
 @app.on_event("startup")
 async def startup_event():
     """Initialize application resources on startup."""

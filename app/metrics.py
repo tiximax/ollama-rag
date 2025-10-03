@@ -71,6 +71,20 @@ active_chats = Gauge('ollama_rag_active_chats', 'Number of active chat sessions'
 
 ollama_health = Gauge('ollama_rag_ollama_healthy', 'Ollama service health (1=healthy, 0=unhealthy)')
 
+# ===== Semantic Cache Metrics =====
+semcache_hits = Counter(
+    'ollama_rag_semcache_hits_total', 'Total semantic cache hits', ['type']  # type: exact|semantic
+)
+semcache_misses = Counter(
+    'ollama_rag_semcache_misses_total', 'Total semantic cache misses'
+)
+semcache_size = Gauge(
+    'ollama_rag_semcache_size', 'Semantic cache current size'
+)
+semcache_fill_ratio = Gauge(
+    'ollama_rag_semcache_fill_ratio', 'Semantic cache fill ratio (size/max_size)'
+)
+
 # ===== System Info =====
 app_info = Info('ollama_rag_app', 'Application information')
 
@@ -145,6 +159,38 @@ def update_active_chats(db: str, count: int):
 def update_ollama_health(is_healthy: bool):
     """Update Ollama health status."""
     ollama_health.set(1 if is_healthy else 0)
+
+
+# ===== Semantic Cache Helpers =====
+
+def semcache_hit(hit_type: str) -> None:
+    """Increment semantic cache hit counter.
+
+    Args:
+        hit_type: 'exact' or 'semantic'
+    """
+    try:
+        semcache_hits.labels(type=hit_type).inc()
+    except Exception:
+        pass
+
+
+def semcache_miss() -> None:
+    """Increment semantic cache miss counter."""
+    try:
+        semcache_misses.inc()
+    except Exception:
+        pass
+
+
+def update_semcache_size(size: int, max_size: int) -> None:
+    """Update semantic cache size and fill ratio gauges."""
+    try:
+        semcache_size.set(size)
+        if max_size > 0:
+            semcache_fill_ratio.set(size / max_size)
+    except Exception:
+        pass
 
 
 def set_app_info(version: str, db_type: str = "chromadb"):

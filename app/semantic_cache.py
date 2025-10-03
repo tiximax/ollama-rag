@@ -57,6 +57,9 @@ class CacheEntry:
         return (time.time() - self.timestamp) > ttl
 
 
+from . import metrics
+
+
 class SemanticQueryCache:
     """
     🧠 Semantic Query Cache - Cache queries by semantic similarity!
@@ -137,6 +140,7 @@ class SemanticQueryCache:
             Cached result nếu tìm thấy, None nếu cache miss
         """
         with self._lock:
+            print(f"[SemCache] GET start: query='{query[:60]}'")
             # 1. Try exact match first (fastest path) 🏃‍♂️
             key = self._compute_key(query)
             if key in self._cache:
@@ -150,8 +154,13 @@ class SemanticQueryCache:
                     return None
                 
                 # Exact hit! 🎯
+                print("[SemCache] GET exact hit")
                 self._stats["hits"] += 1
                 self._stats["exact_hits"] += 1
+                try:
+                    metrics.semcache_hit('exact')
+                except Exception:
+                    pass
                 entry.access_count += 1
                 entry.last_access = time.time()
                 
@@ -172,6 +181,11 @@ class SemanticQueryCache:
             try:
                 # Generate embedding for query
                 query_embedding = np.array(embedder([query])[0])
+                try:
+                    dims = int(query_embedding.shape[0])
+                except Exception:
+                    dims = len(query_embedding) if hasattr(query_embedding, "__len__") else -1
+                print(f"[SemCache] GET embedding dims: {dims}")
                 
                 # Search for similar cached queries
                 best_match: Optional[Tuple[str, CacheEntry, float]] = None
@@ -194,8 +208,13 @@ class SemanticQueryCache:
                 # Found semantic match! 🎉
                 if best_match:
                     cache_key, entry, similarity = best_match
+                    print(f"[SemCache] GET semantic hit: sim={similarity:.4f} for '{entry.query[:60]}'")
                     self._stats["hits"] += 1
                     self._stats["semantic_hits"] += 1
+                    try:
+                        metrics.semcache_hit('semantic')
+                    except Exception:
+                        pass
                     entry.access_count += 1
                     entry.last_access = time.time()
                     
@@ -215,10 +234,15 @@ class SemanticQueryCache:
             except Exception as e:
                 # If embedding fails, just continue as cache miss
                 # Don't crash the application!
-                print(f"⚠️ Semantic cache embedding failed: {e}")
+                print(f"Semantic cache embedding failed: {e}")
             
             # Cache miss 😢
+            print("[SemCache] GET miss")
             self._stats["misses"] += 1
+            try:
+                metrics.semcache_miss()
+            except Exception:
+                pass
             return None if not return_metadata else (None, None)
     
     def set(
@@ -237,8 +261,14 @@ class SemanticQueryCache:
         """
         with self._lock:
             try:
+                print(f"[SemCache] SET start: query='{query[:60]}'")
                 # Generate embedding
                 query_embedding = np.array(embedder([query])[0])
+                try:
+                    dims = int(query_embedding.shape[0])
+                except Exception:
+                    dims = len(query_embedding) if hasattr(query_embedding, "__len__") else -1
+                print(f"[SemCache] SET embedding dims: {dims}")
                 
                 # Create cache entry
                 key = self._compute_key(query)
@@ -260,6 +290,11 @@ class SemanticQueryCache:
                 # Add to cache
                 self._cache[key] = entry
                 self._cache.move_to_end(key)  # Mark as most recently used
+                print("[SemCache] SET done")
+                try:
+                    metrics.update_semcache_size(len(self._cache), self.max_size)
+                except Exception:
+                    pass
                 
             except Exception as e:
                 # If caching fails, don't crash!
@@ -269,6 +304,10 @@ class SemanticQueryCache:
         """Xóa toàn bộ cache."""
         with self._lock:
             self._cache.clear()
+            try:
+                metrics.update_semcache_size(0, self.max_size)
+            except Exception:
+                pass
     
     def cleanup_expired(self) -> int:
         """
@@ -287,6 +326,10 @@ class SemanticQueryCache:
                 del self._cache[key]
             
             self._stats["expirations"] += len(expired_keys)
+            try:
+                metrics.update_semcache_size(len(self._cache), self.max_size)
+            except Exception:
+                pass
             return len(expired_keys)
     
     def stats(self) -> Dict[str, Any]:
@@ -314,6 +357,8 @@ class SemanticQueryCache:
                 "size": len(self._cache),
                 "max_size": self.max_size,
                 "fill_ratio": len(self._cache) / self.max_size,
+                "similarity_threshold": self.similarity_threshold,
+                "ttl": self.ttl,
             }
     
     def __len__(self) -> int:
