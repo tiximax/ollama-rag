@@ -755,8 +755,9 @@ def api_query(req: QueryRequest, request: Request):
         cache_metadata = None
         if hasattr(app.state, 'semantic_cache') and (app.state.semantic_cache is not None):
             try:
+                ns = f"{engine.db_name}:{getattr(engine, '_corpus_stamp', '0')}"
                 cached_result, cache_metadata = app.state.semantic_cache.get(
-                    req.query, engine.ollama.embed, return_metadata=True
+                    req.query, engine.ollama.embed, return_metadata=True, namespace=ns
                 )
                 if cached_result:
                     # Cache HIT! 🎉 Return immediately
@@ -810,8 +811,9 @@ def api_query(req: QueryRequest, request: Request):
         # 🧠 Cache the result (if semantic cache enabled)
         if hasattr(app.state, 'semantic_cache') and (app.state.semantic_cache is not None):
             try:
-                app.state.semantic_cache.set(req.query, result, engine.ollama.embed)
-                print(f"Query cached: {req.query[:50]}...")
+                ns = f"{engine.db_name}:{getattr(engine, '_corpus_stamp', '0')}"
+                app.state.semantic_cache.set(req.query, result, engine.ollama.embed, namespace=ns)
+                print(f"Query cached: {req.query[:50]}... ns={ns}")
             except Exception as e:
                 print(f"Failed to cache query: {e}")
 

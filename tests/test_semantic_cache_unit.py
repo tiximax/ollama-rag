@@ -127,3 +127,40 @@ def test_stats_structure():
         "ttl",
     ]:
         assert key in stats
+
+
+def test_namespace_isolation():
+    cache = SemanticQueryCache(similarity_threshold=0.90, max_size=10, ttl=10.0)
+    emb = MockEmbedder({"q": np.array([1.0, 0.0])})
+
+    # Seed in namespace A
+    cache.set("q", {"answer": "A"}, emb, namespace="DB1:stamp1")
+
+    # Exact get in different namespace should MISS
+    assert cache.get("q", emb, namespace="DB2:stampX") is None
+
+    # Semantic get in different namespace should MISS too (even same embedding)
+    assert cache.get("q", emb, namespace="DB3:stampY") is None
+
+    # Exact get in same namespace should HIT
+    assert cache.get("q", emb, namespace="DB1:stamp1") is not None
+    cache = SemanticQueryCache(similarity_threshold=0.95, max_size=2, ttl=10.0)
+    emb = MockEmbedder({"a": np.array([1.0, 0.0])})
+    cache.set("a", {"answer": "A"}, emb)
+    _ = cache.get("a", emb)
+    stats = cache.stats()
+    for key in [
+        "hits",
+        "misses",
+        "exact_hits",
+        "semantic_hits",
+        "total_requests",
+        "hit_rate",
+        "semantic_hit_rate",
+        "size",
+        "max_size",
+        "fill_ratio",
+        "similarity_threshold",
+        "ttl",
+    ]:
+        assert key in stats
