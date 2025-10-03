@@ -290,6 +290,161 @@ def get_cache_stats():
         )
 
 
+# ===== Runtime config for Semantic Cache =====
+class CacheConfigUpdate(BaseModel):
+    """Runtime update for Semantic Cache configuration.
+
+    Fields are optional; only provided ones will be applied.
+    """
+
+    enabled: bool | None = None
+    similarity_threshold: float | None = None
+    ttl: float | None = None
+    max_size: int | None = None
+
+    @field_validator("similarity_threshold")
+    @classmethod
+    def _validate_threshold(cls, v: float | None) -> float | None:
+        if v is None:
+            return v
+        if not (0.0 < v < 1.0):
+            raise ValueError("similarity_threshold must be in (0.0, 1.0)")
+        return v
+
+    @field_validator("ttl")
+    @classmethod
+    def _validate_ttl(cls, v: float | None) -> float | None:
+        if v is None:
+            return v
+        if v <= 0:
+            raise ValueError("ttl must be > 0")
+        return v
+
+    @field_validator("max_size")
+    @classmethod
+    def _validate_max_size(cls, v: int | None) -> int | None:
+        if v is None:
+            return v
+        if v < 1:
+            raise ValueError("max_size must be >= 1")
+        return v
+
+
+@app.get("/api/cache/config", tags=["Monitoring"])
+def get_cache_config():
+    """Return current semantic cache runtime configuration and stats."""
+    cache = getattr(app.state, "semantic_cache", None)
+    if cache is None:
+        return {"enabled": False, "message": "Semantic cache is disabled."}
+    stats = cache.stats()
+    return {
+        "enabled": True,
+        "similarity_threshold": cache.similarity_threshold,
+        "ttl": cache.ttl,
+        "max_size": cache.max_size,
+        "size": len(cache),
+        "stats": stats,
+    }
+
+
+@app.post("/api/cache/config", tags=["Monitoring"])
+def update_cache_config(req: CacheConfigUpdate):
+    """Update semantic cache runtime configuration without restart.
+
+    Notes:
+    - This does not persist to .env; settings apply until next restart.
+    - You can enable/disable cache via `enabled`.
+    - Changing `max_size` will shrink the cache using LRU if needed.
+    """
+    cache = getattr(app.state, "semantic_cache", None)
+
+    # Handle enable/disable
+    if req.enabled is not None:
+        if req.enabled and cache is None:
+            th = (
+                req.similarity_threshold
+                if req.similarity_threshold is not None
+                else float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.95"))
+            )
+            ttl = req.ttl if req.ttl is not None else float(os.getenv("SEMANTIC_CACHE_TTL", "3600"))
+            mx = (
+                req.max_size
+                if req.max_size is not None
+                else int(os.getenv("SEMANTIC_CACHE_SIZE", "1000"))
+            )
+            app.state.semantic_cache = SemanticQueryCache(
+                similarity_threshold=th, max_size=mx, ttl=ttl
+            )
+            cache = app.state.semantic_cache
+            try:
+                metrics.update_semcache_size(len(cache), cache.max_size)
+            except Exception:
+                pass
+        elif (not req.enabled) and cache is not None:
+            # Disable and reset gauges
+            try:
+                metrics.update_semcache_size(0, cache.max_size)
+            except Exception:
+                pass
+            app.state.semantic_cache = None
+            return {"enabled": False, "message": "Semantic cache disabled."}
+
+    # If still disabled at this point, reject further changes
+    if cache is None:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "Semantic cache is disabled. Set enabled=true to enable.",
+            },
+        )
+
+    changed: dict[str, object] = {}
+
+    # Apply threshold
+    if req.similarity_threshold is not None:
+        cache.similarity_threshold = req.similarity_threshold
+        changed["similarity_threshold"] = cache.similarity_threshold
+
+    # Apply ttl
+    if req.ttl is not None:
+        cache.ttl = req.ttl
+        changed["ttl"] = cache.ttl
+
+    # Apply max size (shrink using LRU if needed)
+    if req.max_size is not None:
+        cache.max_size = req.max_size
+        try:
+            while len(cache._cache) > cache.max_size:  # type: ignore[attr-defined]
+                # Pop oldest entry (OrderedDict behavior)
+                cache._cache.popitem(last=False)  # type: ignore[attr-defined]
+                # Track eviction for stats if available
+                try:
+                    cache._stats["evictions"] = cache._stats.get("evictions", 0) + 1  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+        except Exception:
+            # If internal structure changes in future, ignore shrink errors gracefully
+            pass
+        changed["max_size"] = cache.max_size
+
+    # Update gauges after changes
+    try:
+        metrics.update_semcache_size(len(cache), cache.max_size)
+    except Exception:
+        pass
+
+    return {
+        "enabled": True,
+        "changed": changed,
+        "current": {
+            "similarity_threshold": cache.similarity_threshold,
+            "ttl": cache.ttl,
+            "max_size": cache.max_size,
+            "size": len(cache),
+        },
+    }
+
+
 @app.get("/health", tags=["System"])
 def health_check():
     """✅ Enhanced health check endpoint with detailed metrics.

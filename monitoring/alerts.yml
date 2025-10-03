@@ -17,7 +17,7 @@ groups:
           description: "Query error rate is {{ $value | humanizePercentage }} (threshold: 10%)"
           impact: "Users experiencing query failures"
           action: "Check logs: `grep ERROR app/logs/*.log`"
-      
+
       # 🐢 Very Slow Queries - Query chậm như rùa!
       - alert: VerySlowQueries
         expr: histogram_quantile(0.99, rate(ollama_rag_llm_response_seconds_bucket[5m])) > 60
@@ -30,7 +30,7 @@ groups:
           description: "P99 response time: {{ $value | humanizeDuration }}"
           impact: "Extremely poor user experience"
           action: "Check Ollama service health, consider increasing resources"
-      
+
       # 💀 Ollama Service Down
       - alert: OllamaServiceDown
         expr: ollama_rag_ollama_health_status == 0
@@ -43,7 +43,7 @@ groups:
           description: "Ollama health check failed"
           impact: "All RAG queries will fail"
           action: "Restart Ollama: `ollama serve`"
-      
+
       # 📊 High Memory Usage
       - alert: HighMemoryUsage
         expr: ollama_rag_system_memory_percent > 90
@@ -56,10 +56,53 @@ groups:
           description: "System memory usage exceeds 90%"
           impact: "Risk of OOM kills, performance degradation"
           action: "Check memory leaks, restart services if needed"
-      
+
   - name: ollama_rag_warnings
     interval: 1m
     rules:
+      # 🧠 Low Semantic Cache Hit Rate
+      - alert: LowSemanticCacheHitRate
+        expr: |
+          (
+            sum(rate(ollama_rag_semcache_hits_total[10m])) /
+            (sum(rate(ollama_rag_semcache_hits_total[10m])) + sum(rate(ollama_rag_semcache_misses_total[10m])))
+          ) < 0.3
+        for: 15m
+        labels:
+          severity: warning
+          component: semcache
+        annotations:
+          summary: "Semantic cache hit rate < 30% 📉"
+          description: "Current semantic hit rate: {{ $value | humanizePercentage }}"
+          impact: "Increased latency, higher load on LLM due to cache misses"
+          action: "Tune similarity_threshold or TTL; verify semantic cache functionality via /api/cache-stats"
+
+      # 🧠 High Semantic Cache Miss Rate
+      - alert: HighSemanticCacheMissRate
+        expr: rate(ollama_rag_semcache_misses_total[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: semcache
+        annotations:
+          summary: "Semantic cache misses > 0.5/s 🚨"
+          description: "Miss rate: {{ $value | humanize }} per second over 5m"
+          impact: "Lower cache efficiency; potential latency increase"
+          action: "Check recent traffic patterns and threshold; consider increasing TTL or size"
+
+      # 🧠 High Semantic Cache Fill Ratio
+      - alert: HighSemanticCacheFillRatio
+        expr: ollama_rag_semcache_fill_ratio > 0.8
+        for: 15m
+        labels:
+          severity: info
+          component: semcache
+        annotations:
+          summary: "Semantic cache fill ratio > 80% 📦"
+          description: "Fill ratio: {{ $value | humanizePercentage }}"
+          impact: "Evictions likely; hit rate may suffer under churn"
+          action: "Consider increasing max_size or adjusting eviction/TTL policies"
+
       # ⚠️ Slow Queries Warning
       - alert: SlowQueries
         expr: histogram_quantile(0.95, rate(ollama_rag_llm_response_seconds_bucket[10m])) > 30
@@ -72,7 +115,7 @@ groups:
           description: "P95 response time: {{ $value | humanizeDuration }} (threshold: 30s)"
           impact: "User experience degrading"
           action: "Monitor system resources, check Ollama logs"
-      
+
       # 📉 Low Cache Hit Rate
       - alert: LowCacheHitRate
         expr: |
@@ -89,7 +132,7 @@ groups:
           description: "Current hit rate: {{ $value | humanizePercentage }}"
           impact: "Increased latency, higher load on LLM"
           action: "Check cache configuration, consider increasing TTL"
-      
+
       # 🔄 High Request Rate
       - alert: HighRequestRate
         expr: rate(http_requests_total{job="ollama_rag"}[5m]) > 100
@@ -102,7 +145,7 @@ groups:
           description: "Request rate: {{ $value | humanize }} req/s"
           impact: "Increased resource usage"
           action: "Monitor performance, consider scaling"
-      
+
       # 💾 Database Size Warning
       - alert: LargeDatabaseSize
         expr: ollama_rag_db_size_bytes > 5e9  # 5GB
@@ -115,7 +158,7 @@ groups:
           description: "DB size: {{ $value | humanize1024 }}B"
           impact: "Slower queries, higher memory usage"
           action: "Consider archiving old data or optimizing"
-      
+
   - name: ollama_rag_performance
     interval: 2m
     rules:
@@ -131,11 +174,11 @@ groups:
           description: "P90 retrieval time: {{ $value | humanizeDuration }}"
           impact: "Increased overall query latency"
           action: "Check vector DB performance, consider reindexing"
-      
+
       # 🔄 Reranking Performance
       - alert: SlowReranking
         expr: |
-          histogram_quantile(0.90, 
+          histogram_quantile(0.90,
             rate(ollama_rag_rerank_seconds_bucket{enabled="true"}[10m])
           ) > 3
         for: 10m
@@ -147,7 +190,7 @@ groups:
           description: "P90 reranking time: {{ $value | humanizeDuration }}"
           impact: "Minor latency increase"
           action: "Consider adjusting reranker batch size or disabling for speed"
-      
+
   - name: ollama_rag_availability
     interval: 30s
     rules:
@@ -163,7 +206,7 @@ groups:
           description: "Service is not responding to health checks"
           impact: "Complete service outage"
           action: "Check service status, restart if needed"
-      
+
       # 🔌 Multiple Services Down
       - alert: MultipleServicesDown
         expr: count(up{job="ollama_rag"} == 0) > 1
@@ -178,12 +221,12 @@ groups:
           action: "Emergency escalation required"
 
 # 📚 Usage Instructions:
-# 
+#
 # 1. Add to Prometheus config:
 #    ```yaml
 #    rule_files:
 #      - "alerts.yml"
-#    
+#
 #    alerting:
 #      alertmanagers:
 #        - static_configs:
@@ -198,7 +241,7 @@ groups:
 #      group_wait: 10s
 #      group_interval: 5m
 #      repeat_interval: 4h
-#    
+#
 #    receivers:
 #      - name: 'team-slack'
 #        slack_configs:
