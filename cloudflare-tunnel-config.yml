@@ -1,0 +1,13 @@
+tunnel: e9caa880-567c-4ef8-8c9f-1c3a47fe0339
+credentials-file: C:\Users\pc\.cloudflared\e9caa880-567c-4ef8-8c9f-1c3a47fe0339.json
+
+ingress:
+  # Route cho Ollama RAG backend API
+  - hostname: ollama-rag.your-domain.com
+    service: http://localhost:8000
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+      
+  # Catch-all rule (bắt buộc phải có)
+  - service: http_status:404
