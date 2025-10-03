@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Test UI Mode Toggle</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      padding: 20px;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .test-section {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border: 2px solid #334155;
+    }
+    h1 { color: #3b82f6; }
+    h2 { color: #10b981; margin-top: 0; }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 8px 8px 8px 0;
+    }
+    button:hover { background: #2563eb; }
+    .success { background: #10b981; }
+    .success:hover { background: #059669; }
+    code {
+      background: #0b1220;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #fbbf24;
+    }
+    .checklist {
+      list-style: none;
+      padding-left: 0;
+    }
+    .checklist li {
+      padding: 8px;
+      margin: 4px 0;
+      background: #0b1220;
+      border-radius: 4px;
+    }
+    .checklist li:before {
+      content: "☐ ";
+      color: #94a3b8;
+      margin-right: 8px;
+    }
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-weight: bold;
+      margin-left: 8px;
+    }
+    .status.pending { background: #f59e0b; color: black; }
+    .status.passed { background: #10b981; color: white; }
+    .status.failed { background: #ef4444; color: white; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Test UI Mode Toggle - Ollama RAG</h1>
+
+  <div class="test-section">
+    <h2>📋 Checklist Test Manual</h2>
+    <ul class="checklist">
+      <li>Mở app tại <code>http://localhost:8000</code></li>
+      <li>Bấm nút <code>🧭 Đơn giản</code> → UI phải đơn giản hóa (ẩn nhiều panels)</li>
+      <li>Kiểm tra các phần tử sau BỊ ẨN:
+        <ul>
+          <li><code>#db-new-name</code>, <code>#btn-db-create</code>, <code>#btn-db-delete</code></li>
+          <li><code>#ingest-paths</code>, <code>#btn-ingest-paths</code>, file upload buttons</li>
+          <li><code>#panel-docs</code> (tài liệu trong DB)</li>
+          <li><code>#panel-stats</code> (thống kê nhanh)</li>
+          <li><code>#panel-advanced</code> (tùy chọn nâng cao)</li>
+          <li>Tất cả <code>.opt</code> trong query-row (top-k, save chat, provider...)</li>
+        </ul>
+      </li>
+      <li>Các phần tử sau vẫn HIỂN THỊ:
+        <ul>
+          <li><code>#txt-query</code> (input câu hỏi)</li>
+          <li><code>#btn-ask</code> (nút gửi)</li>
+          <li><code>#btn-ui-mode</code> (nút toggle)</li>
+          <li><code>#btn-reload</code></li>
+          <li>DB selector, Chat history panel</li>
+        </ul>
+      </li>
+      <li>Bấm lại nút → chuyển thành <code>🧰 Nâng cao</code> → UI hiện đầy đủ</li>
+      <li>Toast notification hiện "Chế độ ... đã bật"</li>
+      <li>Reload trang → preference được lưu (vẫn ở mode đã chọn)</li>
+      <li>Test trên mobile (F12 → Toggle device toolbar → iPhone SE)</li>
+      <li>Thử query câu hỏi ở cả 2 modes → phải hoạt động bình thường</li>
+    </ul>
+  </div>
+
+  <div class="test-section">
+    <h2>🚀 Quick Actions</h2>
+    <button onclick="window.open('http://localhost:8000', '_blank')">Mở App</button>
+    <button class="success" onclick="testDevTools()">Mở DevTools Test</button>
+    <button onclick="testLocalStorage()">Test localStorage</button>
+  </div>
+
+  <div class="test-section" id="results">
+    <h2>📊 Test Results</h2>
+    <p>Chưa có kết quả. Hãy test manual theo checklist ở trên! 👆</p>
+  </div>
+
+  <script>
+    function testDevTools() {
+      const code = `
+// Test UI Mode trong DevTools
+console.clear();
+console.log('🧪 Testing UI Mode Toggle...');
+
+// 1. Check nút toggle tồn tại
+const btn = document.getElementById('btn-ui-mode');
+console.log('✓ Button exists:', !!btn);
+
+// 2. Toggle mode
+btn?.click();
+setTimeout(() => {
+  const root = document.querySelector('.ui-root');
+  const isSimple = root?.classList.contains('simple-mode');
+  console.log('✓ Simple mode active:', isSimple);
+  
+  // 3. Check ẩn/hiện elements
+  const hiddenEls = [
+    '#db-new-name', '#btn-db-create', '#btn-db-delete',
+    '#ingest-paths', '#panel-docs', '#panel-stats', '#panel-advanced'
+  ];
+  
+  hiddenEls.forEach(sel => {
+    const el = document.querySelector(sel);
+    const isHidden = el && window.getComputedStyle(el).display === 'none';
+    console.log(isHidden ? '✓' : '✗', sel, 'hidden:', isHidden);
+  });
+  
+  // 4. Check localStorage
+  const saved = localStorage.getItem('ollama-rag-ui-mode');
+  console.log('✓ localStorage saved:', saved);
+  
+  console.log('\\n🎉 Test completed! Check logs above.');
+}, 500);
+`;
+      
+      alert('Copy đoạn code sau và paste vào DevTools Console của http://localhost:8000:\\n\\n' + code);
+      navigator.clipboard.writeText(code).then(() => {
+        alert('✅ Đã copy vào clipboard! Giờ:\\n1. Mở http://localhost:8000\\n2. F12 mở DevTools\\n3. Paste code vào Console\\n4. Enter để chạy');
+      });
+    }
+
+    function testLocalStorage() {
+      const key = 'ollama-rag-ui-mode';
+      const val = localStorage.getItem(key);
+      const results = document.getElementById('results');
+      
+      if (val) {
+        results.innerHTML = `
+          <h2>📊 localStorage Test</h2>
+          <p>✅ Key: <code>${key}</code></p>
+          <p>✅ Value: <code>${val}</code></p>
+          <p>App đã lưu preference UI mode thành công!</p>
+        `;
+      } else {
+        results.innerHTML = `
+          <h2>📊 localStorage Test</h2>
+          <p>⚠️ Chưa có data. Hãy mở app và toggle UI mode trước!</p>
+        `;
+      }
+    }
+
+    // Auto-check on load
+    window.addEventListener('load', () => {
+      setTimeout(testLocalStorage, 500);
+    });
+  </script>
+</body>
+</html>
