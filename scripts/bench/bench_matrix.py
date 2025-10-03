@@ -1,11 +1,11 @@
 import argparse
 import csv
 import os
-import sys
 import time
-import requests
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any
+
+import requests
 
 BASE = os.environ.get("BASE_URL", "http://127.0.0.1:8000")
 
@@ -32,7 +32,7 @@ def ensure_ingest(db=None):
     return r.json()
 
 
-def bench_query(method: str, streaming: bool) -> Dict[str, Any]:
+def bench_query(method: str, streaming: bool) -> dict[str, Any]:
     q = "Bitsness là gì?"
     body = {
         "query": q,
@@ -59,14 +59,26 @@ def bench_query(method: str, streaming: bool) -> Dict[str, Any]:
                 ctx_seen = True
                 t_hdr = time.time() - t0
         t_end = time.time() - t0
-        return {"method": method, "mode": "stream", "t_connect": t_conn, "t_ctx": t_hdr or t_conn, "t_ans": t_end, "ans_bytes": ans_len}
+        return {
+            "method": method,
+            "mode": "stream",
+            "t_connect": t_conn,
+            "t_ctx": t_hdr or t_conn,
+            "t_ans": t_end,
+            "ans_bytes": ans_len,
+        }
     else:
         t0 = time.time()
         r = requests.post(BASE + "/api/query", json=body, timeout=180)
         dt = time.time() - t0
         r.raise_for_status()
         data = r.json()
-        return {"method": method, "mode": "nonstream", "latency": dt, "ans_len": len((data or {}).get("answer", ""))}
+        return {
+            "method": method,
+            "mode": "nonstream",
+            "latency": dt,
+            "ans_len": len((data or {}).get("answer", "")),
+        }
 
 
 def run_matrix(rounds: int = 3):
@@ -80,7 +92,12 @@ def run_matrix(rounds: int = 3):
                     row = bench_query(method, streaming)
                     row["ok"] = 1
                 except Exception as e:
-                    row = {"method": method, "mode": ("stream" if streaming else "nonstream"), "ok": 0, "error": str(e)}
+                    row = {
+                        "method": method,
+                        "mode": ("stream" if streaming else "nonstream"),
+                        "ok": 0,
+                        "error": str(e),
+                    }
                 items.append(row)
     return items
 
@@ -112,6 +129,7 @@ def main():
     out = save_csv(rows)
     if out:
         print(out)
+
 
 if __name__ == "__main__":
     main()

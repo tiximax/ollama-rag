@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 API tests for logs and analytics endpoints.
 - Toggle logs enable/disable and fetch info/export/summary
@@ -7,7 +6,9 @@ API tests for logs and analytics endpoints.
 """
 
 import unittest
+
 from fastapi.testclient import TestClient
+
 from app.main import app
 
 

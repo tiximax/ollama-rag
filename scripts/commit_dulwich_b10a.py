@@ -1,5 +1,6 @@
-from dulwich import porcelain
 import sys
+
+from dulwich import porcelain
 
 msg_lines = [
     "feat(analytics): add DB/chat analytics endpoints + e2e",

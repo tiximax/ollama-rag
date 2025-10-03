@@ -1,5 +1,6 @@
-from dulwich import porcelain
 import sys
+
+from dulwich import porcelain
 
 msg_lines = [
     "feat(rerank): add advanced params (provider/max_k/batch_size/num_threads) + UI + e2e",

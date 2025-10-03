@@ -98,7 +98,7 @@ Tạo UI hiện đại, **CỰC KỲ ĐƠN GIẢN**, tập trung vào conversati
   <div class="message user">
     <div class="message-content">How to install?</div>
   </div>
-  
+
   <div class="message assistant">
     <div class="message-content">
       Here's the installation guide...
@@ -120,8 +120,8 @@ Tạo UI hiện đại, **CỰC KỲ ĐƠN GIẢN**, tập trung vào conversati
 ### **3. Input Bar (Fixed Bottom)**
 ```html
 <div class="input-bar">
-  <textarea 
-    placeholder="💬 Type your question..." 
+  <textarea
+    placeholder="💬 Type your question..."
     rows="1"
     aria-label="Message input"
   ></textarea>
@@ -190,32 +190,32 @@ Tạo UI hiện đại, **CỰC KỲ ĐƠN GIẢN**, tập trung vào conversati
   --bg-primary: #0f1419;      /* Main bg */
   --bg-secondary: #1a1d24;    /* Header, cards */
   --bg-tertiary: #242830;     /* Hover, active */
-  
+
   /* Text */
   --text-primary: #e8eaed;    /* Main text */
   --text-secondary: #9aa0a6;  /* Muted text */
   --text-tertiary: #5f6368;   /* Disabled */
-  
+
   /* Accent Colors */
   --accent-blue: #4a90e2;     /* User messages, links */
   --accent-green: #10b981;    /* Success, AI badge */
   --accent-purple: #8b5cf6;   /* Special actions */
   --accent-red: #ef4444;      /* Errors, delete */
-  
+
   /* Surfaces */
   --surface-user: #2d3748;    /* User message bg */
   --surface-ai: #1e293b;      /* AI message bg */
   --surface-elevated: #1f2937; /* Modals, dropdowns */
-  
+
   /* Borders */
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-medium: rgba(255, 255, 255, 0.12);
-  
+
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
-  
+
   /* Spacing */
   --space-unit: 8px;
   --space-xs: 4px;
@@ -224,17 +224,17 @@ Tạo UI hiện đại, **CỰC KỲ ĐƠN GIẢN**, tập trung vào conversati
   --space-lg: 24px;
   --space-xl: 32px;
   --space-2xl: 48px;
-  
+
   /* Radius */
   --radius-sm: 6px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-full: 9999px;
-  
+
   /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   --font-mono: 'SF Mono', 'Consolas', 'Courier New', monospace;
-  
+
   /* Transitions */
   --transition-fast: 150ms ease;
   --transition-base: 250ms ease;

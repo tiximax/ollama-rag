@@ -50,9 +50,9 @@ try {
         "-Command",
         "cd '$ProjectRoot'; Write-Host '🐍 Backend API Server' -ForegroundColor Green; uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --reload"
     ) -WindowStyle Normal
-    
+
     Start-Sleep -Seconds 8
-    
+
     # Verify backend started
     try {
         $backendHealth = Invoke-RestMethod -Uri "http://localhost:8000/health" -TimeoutSec 5
@@ -81,7 +81,7 @@ if ($tunnelProcess) {
         "-Command",
         "cd '$ProjectRoot'; Write-Host '☁️  Cloudflare Tunnel' -ForegroundColor Cyan; Write-Host 'Connecting...' -ForegroundColor Yellow; .\cloudflared.exe tunnel --url http://localhost:8000"
     ) -WindowStyle Normal
-    
+
     Start-Sleep -Seconds 5
     Write-Host "  ✅ Tunnel started! Check the PowerShell window for public URL!" -ForegroundColor Green
     Write-Host "  📡 Your public URL will look like: https://xxxxx-xxxx.trycloudflare.com" -ForegroundColor Cyan

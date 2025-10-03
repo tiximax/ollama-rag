@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests cho /api/citations/chat với các định dạng CSV/MD và negative case 404.
 Các tests này KHÔNG cần sinh câu trả lời từ LLM; dùng chat rỗng để kiểm tra định dạng output hợp lệ.
 """
 
-import io
 import csv
-import uuid
+import io
 import unittest
+import uuid
+
 from fastapi.testclient import TestClient
+
 from app.main import app, chat_store
 
 
@@ -39,7 +40,7 @@ class ApiCitationsChatFormatsTests(unittest.TestCase):
             # Parse bằng csv để đảm bảo hợp lệ
             reader = csv.DictReader(io.StringIO(body))
             # Kiểm tra header
-            expected = ['n','source','version','language','chunk','question','excerpt','ts']
+            expected = ['n', 'source', 'version', 'language', 'chunk', 'question', 'excerpt', 'ts']
             self.assertEqual(reader.fieldnames, expected)
             # Chat rỗng => không có dòng dữ liệu
             rows = list(reader)
@@ -113,13 +114,19 @@ class ApiCitationsChatFormatsTests(unittest.TestCase):
             self.assertEqual(data[2]["source"], "docs/c.txt")
             self.assertEqual(data[2]["excerpt"], "Ex C")
             # Filters: sources multi substring
-            r = self.client.get(f"/api/citations/chat/{chat_id}?db={dbname}&format=json&sources=a.txt,b.txt")
+            r = self.client.get(
+                f"/api/citations/chat/{chat_id}?db={dbname}&format=json&sources=a.txt,b.txt"
+            )
             self.assertEqual(len(r.json()), 2)
             # Filters: versions exact multi
-            r = self.client.get(f"/api/citations/chat/{chat_id}?db={dbname}&format=json&versions=v2,v3")
+            r = self.client.get(
+                f"/api/citations/chat/{chat_id}?db={dbname}&format=json&versions=v2,v3"
+            )
             self.assertEqual(len(r.json()), 2)
             # Filters: languages exact multi
-            r = self.client.get(f"/api/citations/chat/{chat_id}?db={dbname}&format=json&languages=vi,en")
+            r = self.client.get(
+                f"/api/citations/chat/{chat_id}?db={dbname}&format=json&languages=vi,en"
+            )
             self.assertEqual(len(r.json()), 3)
         finally:
             self.client.delete(f"/api/dbs/{dbname}")
@@ -139,8 +146,30 @@ class ApiCitationsChatFormatsTests(unittest.TestCase):
             c2 = r2.json().get("chat", {}).get("id")
 
             # Append a single citation to each
-            chat_store.append_pair(dbname, c1, "Q1", "Ans [1]", {"metas": [{"source":"docs/x1.txt","version":"v1","language":"vi","chunk":1}], "contexts":["CX1"]})
-            chat_store.append_pair(dbname, c2, "Q2", "Ans [1]", {"metas": [{"source":"docs/x2.txt","version":"v2","language":"en","chunk":2}], "contexts":["CX2"]})
+            chat_store.append_pair(
+                dbname,
+                c1,
+                "Q1",
+                "Ans [1]",
+                {
+                    "metas": [
+                        {"source": "docs/x1.txt", "version": "v1", "language": "vi", "chunk": 1}
+                    ],
+                    "contexts": ["CX1"],
+                },
+            )
+            chat_store.append_pair(
+                dbname,
+                c2,
+                "Q2",
+                "Ans [1]",
+                {
+                    "metas": [
+                        {"source": "docs/x2.txt", "version": "v2", "language": "en", "chunk": 2}
+                    ],
+                    "contexts": ["CX2"],
+                },
+            )
 
             # CSV zip
             r = self.client.get(f"/api/citations/db?db={dbname}&format=csv")
@@ -148,12 +177,22 @@ class ApiCitationsChatFormatsTests(unittest.TestCase):
             self.assertIn("application/zip", r.headers.get("content-type", ""))
             z = io.BytesIO(r.content)
             from zipfile import ZipFile
+
             with ZipFile(z, 'r') as zf:
                 names = zf.namelist()
                 self.assertTrue(any(n.endswith("X1-citations.csv") for n in names), names)
                 self.assertTrue(any(n.endswith("X2-citations.csv") for n in names), names)
                 # Inspect: ensure each CSV has exactly one row with expected source
-                expected_hdr = ['n','source','version','language','chunk','question','excerpt','ts']
+                expected_hdr = [
+                    'n',
+                    'source',
+                    'version',
+                    'language',
+                    'chunk',
+                    'question',
+                    'excerpt',
+                    'ts',
+                ]
                 for nm in [n for n in names if n.endswith("-citations.csv")]:
                     with zf.open(nm) as f:
                         content = f.read().decode('utf-8')
@@ -174,6 +213,7 @@ class ApiCitationsChatFormatsTests(unittest.TestCase):
             self.assertIn("application/zip", r.headers.get("content-type", ""))
             z = io.BytesIO(r.content)
             from zipfile import ZipFile
+
             with ZipFile(z, 'r') as zf:
                 names = zf.namelist()
                 self.assertTrue(any(n.endswith("X1-citations.md") for n in names), names)

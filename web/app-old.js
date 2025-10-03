@@ -1,7 +1,7 @@
 // ===== Toast Notification System =====
 const ToastManager = {
   container: null,
-  
+
   init() {
     if (!this.container) {
       this.container = document.createElement('div');
@@ -9,40 +9,40 @@ const ToastManager = {
       document.body.appendChild(this.container);
     }
   },
-  
+
   show(message, type = 'info', duration = 4000) {
     this.init();
-    
+
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    
+
     const icon = this._getIcon(type);
     const iconEl = document.createElement('span');
     iconEl.className = 'toast-icon';
     iconEl.textContent = icon;
-    
+
     const messageEl = document.createElement('div');
     messageEl.className = 'toast-message';
     messageEl.textContent = message;
-    
+
     const closeBtn = document.createElement('button');
     closeBtn.className = 'toast-close';
     closeBtn.textContent = '×';
     closeBtn.onclick = () => this.remove(toast);
-    
+
     toast.appendChild(iconEl);
     toast.appendChild(messageEl);
     toast.appendChild(closeBtn);
-    
+
     this.container.appendChild(toast);
-    
+
     if (duration > 0) {
       setTimeout(() => this.remove(toast), duration);
     }
-    
+
     return toast;
   },
-  
+
   remove(toast) {
     toast.classList.add('toast-exit');
     setTimeout(() => {
@@ -51,12 +51,12 @@ const ToastManager = {
       }
     }, 300);
   },
-  
+
   success(message, duration) { return this.show(message, 'success', duration); },
   error(message, duration) { return this.show(message, 'error', duration); },
   warning(message, duration) { return this.show(message, 'warning', duration); },
   info(message, duration) { return this.show(message, 'info', duration); },
-  
+
   _getIcon(type) {
     const icons = {
       success: '✅',
@@ -71,22 +71,22 @@ const ToastManager = {
 // ===== Loading Overlay =====
 const LoadingOverlay = {
   overlay: null,
-  
+
   show(text = 'Đang xử lý...') {
     if (!this.overlay) {
       this.overlay = document.createElement('div');
       this.overlay.className = 'loading-overlay';
-      
+
       const content = document.createElement('div');
       content.className = 'loading-content';
-      
+
       const spinner = document.createElement('div');
       spinner.className = 'loading-spinner-large';
-      
+
       const textEl = document.createElement('div');
       textEl.className = 'loading-text';
       textEl.textContent = text;
-      
+
       content.appendChild(spinner);
       content.appendChild(textEl);
       this.overlay.appendChild(content);
@@ -94,16 +94,16 @@ const LoadingOverlay = {
       const textEl = this.overlay.querySelector('.loading-text');
       if (textEl) textEl.textContent = text;
     }
-    
+
     document.body.appendChild(this.overlay);
   },
-  
+
   hide() {
     if (this.overlay && this.overlay.parentNode) {
       this.overlay.parentNode.removeChild(this.overlay);
     }
   },
-  
+
   updateText(text) {
     if (this.overlay) {
       const textEl = this.overlay.querySelector('.loading-text');
@@ -141,7 +141,7 @@ document.addEventListener('keydown', (e) => {
       document.getElementById('btn-ask')?.click();
     }
   }
-  
+
   // Escape: Clear result
   if (e.key === 'Escape') {
     const resultDiv = document.getElementById('result');
@@ -151,7 +151,7 @@ document.addEventListener('keydown', (e) => {
     if (contextsDiv) contextsDiv.innerHTML = '';
     if (citationsDiv) citationsDiv.innerHTML = '';
   }
-  
+
   // Ctrl/Cmd + K: Focus search
   if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
     e.preventDefault();
@@ -1166,28 +1166,28 @@ async function handleSimpleIngest() {
   try {
     const files = fileUploadSimple?.files ? Array.from(fileUploadSimple.files) : [];
     const url = ingestUrlSimple?.value?.trim();
-    
+
     if (!files.length && !url) {
       ToastManager.warning('Chọn file hoặc nhập URL');
       return;
     }
-    
+
     setButtonLoading(btnIngestSimple, true);
     if (ingestSimpleStatus) ingestSimpleStatus.textContent = 'Đang xử lý...';
-    
+
     if (files.length > 0) {
       // Upload files
       const fd = new FormData();
       files.forEach(f => fd.append('files', f));
       if (dbSelect.value) fd.append('db', dbSelect.value);
-      
+
       const resp = await fetch('/api/upload', { method: 'POST', body: fd });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || resp.status);
-      
+
       ToastManager.success(`Đã thêm ${data.saved.length} file (${data.chunks_indexed} chunks)`);
       if (ingestSimpleStatus) ingestSimpleStatus.textContent = `✅ ${data.saved.length} file`;
-      
+
       // Clear file input
       if (fileUploadSimple) fileUploadSimple.value = '';
     } else if (url) {
@@ -1195,18 +1195,18 @@ async function handleSimpleIngest() {
       const params = new URLSearchParams();
       if (dbSelect.value) params.set('db', dbSelect.value);
       params.set('paths', url);
-      
+
       const resp = await fetch('/api/ingest_by_paths?' + params.toString(), { method: 'POST' });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || resp.status);
-      
+
       ToastManager.success(`Đã thêm từ URL (${data.chunks_indexed} chunks)`);
       if (ingestSimpleStatus) ingestSimpleStatus.textContent = `✅ URL OK`;
-      
+
       // Clear URL input
       if (ingestUrlSimple) ingestUrlSimple.value = '';
     }
-    
+
     await loadFilters();
   } catch (e) {
     ToastManager.error('Lỗi ingest: ' + e);

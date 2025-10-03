@@ -1,0 +1,40 @@
+# Cloudflare Tunnel Configuration
+# Copy this file to: C:\Users\<username>\.cloudflared\config.yml
+# Replace placeholders with your actual values
+
+# Your tunnel ID (get from: cloudflared tunnel list)
+tunnel: <YOUR_TUNNEL_ID>
+
+# Path to tunnel credentials
+# Get from: C:\Users\<username>\.cloudflared\<tunnel-id>.json
+credentials-file: C:\Users\<username>\.cloudflared\<YOUR_TUNNEL_ID>.json
+
+# Ingress rules - order matters!
+ingress:
+  # Main application
+  - hostname: ollama-rag.yourdomain.com
+    service: http://localhost:8000
+    originRequest:
+      # Optional: connection settings
+      connectTimeout: 30s
+      noTLSVerify: false
+  
+  # Optional: separate API endpoint
+  # - hostname: api.yourdomain.com
+  #   service: http://localhost:8000
+  #   path: ^/api/.*
+  
+  # Optional: health check endpoint
+  # - hostname: health.yourdomain.com
+  #   service: http://localhost:8000
+  #   path: ^/health
+  
+  # Catch-all rule (REQUIRED - must be last)
+  - service: http_status:404
+
+# Optional: Logging
+# logfile: C:\Users\<username>\.cloudflared\tunnel.log
+# loglevel: info
+
+# Optional: Metrics
+# metrics: localhost:3333

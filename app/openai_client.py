@@ -1,8 +1,9 @@
-import os
-import requests
 import json
+import os
 import time
-from typing import Optional, Iterator, Tuple
+from collections.abc import Iterator
+
+import requests
 
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -15,7 +16,7 @@ BACKOFF_FACTOR = float(os.getenv("OPENAI_RETRY_BACKOFF", "0.6"))
 
 
 class OpenAIClient:
-    def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None):
+    def __init__(self, base_url: str | None = None, api_key: str | None = None):
         self.base_url = base_url or OPENAI_BASE_URL
         self.api_key = api_key or OPENAI_API_KEY
         if not self.api_key:
@@ -28,13 +29,23 @@ class OpenAIClient:
             "Content-Type": "application/json",
         }
 
-    def _request(self, method: str, path: str, *, json_body=None, stream: bool = False, timeout: Optional[Tuple[float, float]] = None) -> requests.Response:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body=None,
+        stream: bool = False,
+        timeout: tuple[float, float] | None = None,
+    ) -> requests.Response:
         url = f"{self.base_url}{path}"
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         to = timeout or (CONNECT_TIMEOUT, READ_TIMEOUT)
         for attempt in range(MAX_RETRIES + 1):
             try:
-                resp = self.session.request(method, url, json=json_body, stream=stream, timeout=to, headers=self._headers())
+                resp = self.session.request(
+                    method, url, json=json_body, stream=stream, timeout=to, headers=self._headers()
+                )
                 if resp.status_code in (429, 500, 502, 503, 504):
                     last_exc = requests.HTTPError(f"{resp.status_code}: transient", response=resp)
                     try:
@@ -47,7 +58,7 @@ class OpenAIClient:
                 last_exc = e
                 if attempt >= MAX_RETRIES:
                     break
-                time.sleep(BACKOFF_FACTOR * (2 ** attempt))
+                time.sleep(BACKOFF_FACTOR * (2**attempt))
             except Exception as e:
                 last_exc = e
                 break
@@ -55,7 +66,7 @@ class OpenAIClient:
             raise last_exc
         raise RuntimeError("OpenAI request failed")
 
-    def generate(self, prompt: str, system: Optional[str] = None) -> str:
+    def generate(self, prompt: str, system: str | None = None) -> str:
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -73,7 +84,7 @@ class OpenAIClient:
         except Exception:
             return ""
 
-    def generate_stream(self, prompt: str, system: Optional[str] = None) -> Iterator[str]:
+    def generate_stream(self, prompt: str, system: str | None = None) -> Iterator[str]:
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -90,7 +101,7 @@ class OpenAIClient:
                 if not line:
                     continue
                 if line.startswith("data: "):
-                    chunk = line[len("data: "):].strip()
+                    chunk = line[len("data: ") :].strip()
                     if chunk == "[DONE]":
                         break
                     try:

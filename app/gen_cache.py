@@ -1,7 +1,6 @@
 import os
-import time
 import sqlite3
-from typing import Optional
+import time
 
 
 class GenCache:
@@ -27,22 +26,18 @@ class GenCache:
                     "CREATE TABLE IF NOT EXISTS gen_cache (key TEXT PRIMARY KEY, value TEXT, ts INTEGER)"
                 )
                 # basic index on ts for optional cleanup
-                conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_gen_cache_ts ON gen_cache(ts)"
-                )
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_gen_cache_ts ON gen_cache(ts)")
         except Exception:
             # If cache initialization fails, disable to avoid breaking request path
             self.enabled = False
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         if not self.enabled:
             return None
         try:
             now = int(time.time())
             with sqlite3.connect(self.path) as conn:
-                row = conn.execute(
-                    "SELECT value, ts FROM gen_cache WHERE key=?", (key,)
-                ).fetchone()
+                row = conn.execute("SELECT value, ts FROM gen_cache WHERE key=?", (key,)).fetchone()
                 if not row:
                     return None
                 val, ts = row[0], int(row[1] or 0)

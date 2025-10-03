@@ -514,14 +514,14 @@ Already configured via `slowapi` in the backend:
 
 ## 🎉 Success Checklist
 
-✅ Ollama running on port 11434  
-✅ Backend running on port 8000  
-✅ Cloudflare Tunnel connected  
-✅ Health endpoint returns `{"status": "healthy"}`  
-✅ Can query API locally  
-✅ Can access API via public URL  
-✅ Services auto-start (if using Windows Services)  
-✅ Monitoring and logs working  
+✅ Ollama running on port 11434
+✅ Backend running on port 8000
+✅ Cloudflare Tunnel connected
+✅ Health endpoint returns `{"status": "healthy"}`
+✅ Can query API locally
+✅ Can access API via public URL
+✅ Services auto-start (if using Windows Services)
+✅ Monitoring and logs working
 
 ---
 
@@ -548,5 +548,5 @@ Already configured via `slowapi` in the backend:
 
 **Built with ❤️ by the Ollama RAG Team**
 
-**Version**: 0.4.0  
+**Version**: 0.4.0
 **Last Updated**: 2025-10-03

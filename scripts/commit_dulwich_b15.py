@@ -1,5 +1,6 @@
-from dulwich import porcelain
 import sys
+
+from dulwich import porcelain
 
 msg_lines = [
     "test: stabilize upload_ingest e2e (JS syntax, locator, wait /api/upload)",

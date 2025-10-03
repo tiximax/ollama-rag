@@ -33,8 +33,8 @@
 
 ### 1️⃣ **Header (Minimal)**
 
-**Vị trí:** Top, fixed  
-**Chiều cao:** 60px  
+**Vị trí:** Top, fixed
+**Chiều cao:** 60px
 
 **Components:**
 - **☰ Sidebar Toggle** - Mở/đóng sidebar
@@ -47,9 +47,9 @@
 
 ### 2️⃣ **Sidebar (Collapsible)**
 
-**Mặc định:** Hidden (đóng)  
-**Mở:** Click nút ☰ hoặc swipe từ trái (mobile)  
-**Đóng:** Click ✕, click ngoài sidebar, hoặc ESC  
+**Mặc định:** Hidden (đóng)
+**Mở:** Click nút ☰ hoặc swipe từ trái (mobile)
+**Đóng:** Click ✕, click ngoài sidebar, hoặc ESC
 
 **Sections:**
 
@@ -72,8 +72,8 @@
 
 ### 3️⃣ **Main Chat Area**
 
-**Layout:** Center-focused, max-width 800px  
-**Background:** Dark (#0f1419)  
+**Layout:** Center-focused, max-width 800px
+**Background:** Dark (#0f1419)
 
 **States:**
 
@@ -106,7 +106,7 @@ Hỏi tôi về tài liệu của bạn
 
 ### 4️⃣ **Input Bar (Fixed Bottom)**
 
-**Vị trí:** Bottom, fixed  
+**Vị trí:** Bottom, fixed
 **Components:**
 - **Textarea** - Auto-resize (max 160px)
 - **Send Button (🚀)** - Gửi message
@@ -125,10 +125,10 @@ Hỏi tôi về tài liệu của bạn
 
 ### 5️⃣ **FAB (Floating Action Button)**
 
-**Vị trí:** Bottom-right, fixed  
-**Function:** Add documents  
-**Hover:** Scale 1.1  
-**Click:** Mở modal "Thêm Tài liệu"  
+**Vị trí:** Bottom-right, fixed
+**Function:** Add documents
+**Hover:** Scale 1.1
+**Click:** Mở modal "Thêm Tài liệu"
 
 ---
 
@@ -136,23 +136,23 @@ Hỏi tôi về tài liệu của bạn
 
 ### **Modal: Thêm Tài liệu (📥)**
 
-**Trigger:** Click FAB ➕  
-**Close:** X button, ESC key, click overlay  
+**Trigger:** Click FAB ➕
+**Close:** X button, ESC key, click overlay
 
 **Options:**
 1. **Upload Files**
    - Click "Chọn Files" hoặc drag & drop
    - Hỗ trợ: .txt, .pdf, .docx
    - Multiple files OK
-   
+
 2. **Ingest từ URL**
    - Nhập URL vào textbox
    - Hỗ trợ: web pages, raw files
 
 **Flow:**
 ```
-Click FAB → Modal mở → Chọn file/URL → 
-Click "➕ Thêm" → Loading → Toast success → 
+Click FAB → Modal mở → Chọn file/URL →
+Click "➕ Thêm" → Loading → Toast success →
 Modal đóng
 ```
 
@@ -160,8 +160,8 @@ Modal đóng
 
 ### **Modal: Settings (⚙️)**
 
-**Trigger:** Sidebar → Settings  
-**Tabs:** General, Databases, Advanced  
+**Trigger:** Sidebar → Settings
+**Tabs:** General, Databases, Advanced
 
 #### **Tab: General**
 - Provider selection (Ollama/OpenAI)
@@ -180,7 +180,7 @@ Modal đóng
 
 ### **Modal: Analytics (📊)**
 
-**Trigger:** Sidebar → Analytics  
+**Trigger:** Sidebar → Analytics
 **Stats Cards:**
 - Total Chats
 - Q/A Pairs
@@ -202,7 +202,7 @@ Background:
 Text:
   --text-primary: #e8eaed
   --text-secondary: #9aa0a6
-  
+
 Accent:
   --accent-blue: #4a90e2   (User, links)
   --accent-green: #10b981  (Success, AI)
@@ -404,5 +404,5 @@ UI v2 được thiết kế theo triết lý:
 
 **Enjoy the new UI! 🎨✨**
 
-*Last updated: 2025-10-03*  
+*Last updated: 2025-10-03*
 *Version: 2.0.0*

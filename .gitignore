@@ -7,10 +7,17 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.pyc
 .python-version
 .venv/
 venv/
 env/
+ENV/
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
 
 # Node
 node_modules/
@@ -27,14 +34,27 @@ test-results/
 # Coverage & cache
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 .mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
 
 # Data & local artifacts
 data/chroma/
 *.sqlite3
+*.sqlite3-journal
+*.db
+*.db-journal
 *.log
 logs/
+*.tmp
+*.temp
+.cache/
 
 # Lock & generated
 requirements-lock.txt
@@ -42,9 +62,33 @@ requirements-lock.txt
 # IDE/editor
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+.vimrc
+.DS_Store
 
 # Env & secrets
 .env
 .env.*
 # Allow template to be committed
 !/.env.example
+
+# System files
+*.bak
+*.backup
+*.pid
+*.lock
+
+# Profiling & debugging
+*.prof
+*.pstats
+.prof/
+
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride

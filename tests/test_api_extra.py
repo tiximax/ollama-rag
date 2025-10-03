@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Extra API tests:
 - /api/analytics/chat/{id}: create a chat then fetch analytics
@@ -7,7 +6,9 @@ Extra API tests:
 """
 
 import unittest
+
 from fastapi.testclient import TestClient
+
 from app.main import app
 
 
@@ -19,6 +20,7 @@ class ApiExtraTests(unittest.TestCase):
     def test_analytics_chat_empty_chat(self):
         # Create DB and chat
         import uuid
+
         name = "test_analytics_db_" + uuid.uuid4().hex[:8]
         r = self.client.post("/api/dbs/create", json={"name": name})
         self.assertIn(r.status_code, (200, 409), r.text)

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 API tests for citations and feedback endpoints.
 - /api/citations/chat/{chat_id}
@@ -12,7 +11,9 @@ Các bài test này không yêu cầu LLM/embeddings, chỉ thao tác CRUD và e
 import io
 import unittest
 from zipfile import ZipFile
+
 from fastapi.testclient import TestClient
+
 from app.main import app
 
 
@@ -23,6 +24,7 @@ class ApiCitationsFeedbackTests(unittest.TestCase):
 
     def _create_db_and_chat(self, prefix: str = "test_cf"):
         import uuid
+
         dbname = f"{prefix}_{uuid.uuid4().hex[:8]}"
         # Create DB
         r = self.client.post("/api/dbs/create", json={"name": dbname})
@@ -63,6 +65,7 @@ class ApiCitationsFeedbackTests(unittest.TestCase):
 
     def test_feedback_flow_add_list_clear(self):
         import uuid
+
         dbname = f"fb_{uuid.uuid4().hex[:8]}"
         # Create DB
         r = self.client.post("/api/dbs/create", json={"name": dbname})

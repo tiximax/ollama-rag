@@ -1,7 +1,7 @@
 # 📊 BÁO CÁO ĐÁNH GIÁ TOÀN DIỆN - OLLAMA RAG APP
-**Ngày đánh giá:** 2025-10-01  
-**Người đánh giá:** AI Agent (Warp Terminal)  
-**Phiên bản Python:** 3.12.10  
+**Ngày đánh giá:** 2025-10-01
+**Người đánh giá:** AI Agent (Warp Terminal)
+**Phiên bản Python:** 3.12.10
 **Tổng số files:** 85 files (~295KB code)
 
 ---
@@ -186,7 +186,7 @@ class IngestRequest(BaseModel):
     paths: List[str] = ["data/docs"]
     db: Optional[str] = None
     version: Optional[str] = None
-    
+
     @field_validator('paths')
     def validate_paths(cls, v):
         for p in v:
@@ -253,7 +253,7 @@ class RagEngine:
     def __init__(self, ...):
         # ...
         self._bm25_lock = threading.Lock()
-    
+
     def _build_bm25_from_collection(self):
         with self._bm25_lock:
             # ... build BM25
@@ -319,13 +319,13 @@ class RagEngine:
     def __init__(self, ...):
         self._filters_cache_time = None
         self._filters_cache_ttl = 300  # 5 mins
-    
+
     def get_filters(self):
         now = datetime.now()
-        if (self._filters_cache_time and 
+        if (self._filters_cache_time and
             (now - self._filters_cache_time).seconds < self._filters_cache_ttl):
             return self._filters_cache
-        
+
         # Rebuild cache
         # ...
         self._filters_cache_time = now
@@ -454,7 +454,7 @@ function showToast(message, type = 'info') {
     toast.className = `toast toast-${type}`;
     toast.textContent = message;
     document.body.appendChild(toast);
-    
+
     setTimeout(() => toast.classList.add('show'), 10);
     setTimeout(() => {
         toast.classList.remove('show');
@@ -514,17 +514,17 @@ gantt
     Type Safety         :2025-10-01, 3d
     Resource Leaks      :2025-10-04, 2d
     Concurrency         :2025-10-06, 3d
-    
+
     section Phase 2
     Error Handling      :2025-10-09, 4d
     Performance         :2025-10-13, 4d
     Security            :2025-10-17, 3d
-    
+
     section Phase 3
     Refactoring         :2025-10-20, 5d
     Unit Tests          :2025-10-25, 5d
     UI Polish           :2025-10-30, 3d
-    
+
     section Phase 4
     Monitoring          :2025-11-02, 5d
     Advanced RAG        :2025-11-07, 7d

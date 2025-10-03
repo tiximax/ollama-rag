@@ -27,7 +27,7 @@ function showToast(message, type = 'info') {
   toast.className = `toast ${type}`;
   toast.textContent = message;
   toastContainer.appendChild(toast);
-  
+
   setTimeout(() => {
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 300);
@@ -114,11 +114,11 @@ btnSettings?.addEventListener('click', () => openModal('modal-settings'));
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const targetTab = tab.dataset.tab;
-    
+
     // Update tab buttons
     tab.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
-    
+
     // Update tab content
     const modal = tab.closest('.modal');
     modal.querySelectorAll('.tab-content').forEach(content => {
@@ -155,7 +155,7 @@ async function loadDBs() {
   try {
     const resp = await fetch('/api/dbs');
     const data = await resp.json();
-    
+
     if (dbSelect) {
       dbSelect.innerHTML = '';
       data.dbs.forEach(db => {
@@ -164,7 +164,7 @@ async function loadDBs() {
         opt.textContent = db;
         dbSelect.appendChild(opt);
       });
-      
+
       if (data.dbs.length > 0) {
         state.currentDB = data.dbs[0];
         dbSelect.value = state.currentDB;
@@ -180,10 +180,10 @@ async function loadChats() {
   try {
     const params = new URLSearchParams();
     if (state.currentDB) params.set('db', state.currentDB);
-    
+
     const resp = await fetch('/api/chats?' + params.toString());
     const data = await resp.json();
-    
+
     if (chatList) {
       chatList.innerHTML = '';
       data.chats.forEach(chat => {
@@ -204,15 +204,15 @@ async function loadChat(chatId) {
   try {
     const params = new URLSearchParams();
     if (state.currentDB) params.set('db', state.currentDB);
-    
+
     const resp = await fetch(`/api/chats/${chatId}?${params.toString()}`);
     const data = await resp.json();
-    
+
     state.currentChat = chatId;
     state.messages = data.messages || [];
-    
+
     renderMessages();
-    
+
     // Update active chat in list
     chatList?.querySelectorAll('li').forEach(li => {
       li.classList.toggle('active', li.dataset.chatId === chatId);
@@ -225,9 +225,9 @@ async function loadChat(chatId) {
 // ===== Render Messages =====
 function renderMessages() {
   if (!chatMessages) return;
-  
+
   chatMessages.innerHTML = '';
-  
+
   if (state.messages.length === 0) {
     chatMessages.innerHTML = `
       <div class="welcome">
@@ -238,22 +238,22 @@ function renderMessages() {
     `;
     return;
   }
-  
+
   state.messages.forEach(msg => {
     const div = document.createElement('div');
     div.className = `message ${msg.role}`;
-    
+
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar';
     avatar.textContent = msg.role === 'user' ? '👤' : '🤖';
-    
+
     const content = document.createElement('div');
     content.className = 'message-content';
     content.textContent = msg.content;
-    
+
     div.appendChild(avatar);
     div.appendChild(content);
-    
+
     // Add sources if available
     if (msg.sources && msg.sources.length > 0) {
       const sources = document.createElement('div');
@@ -266,10 +266,10 @@ function renderMessages() {
       });
       div.appendChild(sources);
     }
-    
+
     chatMessages.appendChild(div);
   });
-  
+
   // Scroll to bottom
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -278,43 +278,43 @@ function renderMessages() {
 async function sendMessage() {
   const query = inputQuery?.value?.trim();
   if (!query) return;
-  
+
   // Add user message to UI
   state.messages.push({ role: 'user', content: query });
   renderMessages();
-  
+
   // Clear input
   if (inputQuery) inputQuery.value = '';
-  
+
   try {
     const params = new URLSearchParams();
     if (state.currentDB) params.set('db', state.currentDB);
     params.set('query', query);
     if (state.currentChat) params.set('chat_id', state.currentChat);
-    
+
     const resp = await fetch('/api/query?' + params.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        query, 
+      body: JSON.stringify({
+        query,
         db: state.currentDB,
         chat_id: state.currentChat,
         provider: state.provider
       })
     });
-    
+
     const data = await resp.json();
-    
+
     if (!resp.ok) throw new Error(data.detail || 'Query failed');
-    
+
     // Add assistant response
     const sources = (data.metadatas || []).map(m => m.source).filter(Boolean);
-    state.messages.push({ 
-      role: 'assistant', 
+    state.messages.push({
+      role: 'assistant',
       content: data.answer,
       sources: sources
     });
-    
+
     renderMessages();
   } catch (e) {
     showToast('Lỗi: ' + e.message, 'error');
@@ -366,49 +366,49 @@ const addStatus = document.getElementById('add-status');
 btnAddDocs?.addEventListener('click', async () => {
   const files = fileUpload?.files;
   const url = inputUrl?.value?.trim();
-  
+
   if (!files?.length && !url) {
     showToast('Chọn file hoặc nhập URL', 'error');
     return;
   }
-  
+
   try {
     btnAddDocs.disabled = true;
     btnAddDocs.textContent = '⏳ Đang xử lý...';
-    
+
     if (files?.length > 0) {
       const fd = new FormData();
       Array.from(files).forEach(f => fd.append('files', f));
       if (state.currentDB) fd.append('db', state.currentDB);
-      
+
       const resp = await fetch('/api/upload', {
         method: 'POST',
         body: fd
       });
-      
+
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || 'Upload failed');
-      
+
       showToast(`✅ Đã thêm ${data.saved?.length || 0} file`, 'success');
-      
+
       if (fileUpload) fileUpload.value = '';
     } else if (url) {
       const params = new URLSearchParams();
       if (state.currentDB) params.set('db', state.currentDB);
       params.set('paths', url);
-      
+
       const resp = await fetch('/api/ingest_by_paths?' + params.toString(), {
         method: 'POST'
       });
-      
+
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || 'Ingest failed');
-      
+
       showToast(`✅ Đã thêm từ URL`, 'success');
-      
+
       if (inputUrl) inputUrl.value = '';
     }
-    
+
     closeModal('modal-add');
   } catch (e) {
     showToast('Lỗi: ' + e.message, 'error');
@@ -429,13 +429,13 @@ btnCreateDb?.addEventListener('click', async () => {
     showToast('Nhập tên DB', 'error');
     return;
   }
-  
+
   try {
     const resp = await fetch(`/api/dbs/${name}`, { method: 'POST' });
     const data = await resp.json();
-    
+
     if (!resp.ok) throw new Error(data.detail || 'Create failed');
-    
+
     showToast('✅ Đã tạo DB: ' + name, 'success');
     await loadDBs();
     if (inputNewDb) inputNewDb.value = '';
@@ -446,15 +446,15 @@ btnCreateDb?.addEventListener('click', async () => {
 
 btnDeleteDb?.addEventListener('click', async () => {
   if (!state.currentDB) return;
-  
+
   if (!confirm(`Xóa DB "${state.currentDB}"? Không thể hoàn tác!`)) return;
-  
+
   try {
     const resp = await fetch(`/api/dbs/${state.currentDB}`, { method: 'DELETE' });
     const data = await resp.json();
-    
+
     if (!resp.ok) throw new Error(data.detail || 'Delete failed');
-    
+
     showToast('✅ Đã xóa DB', 'success');
     await loadDBs();
   } catch (e) {
@@ -467,12 +467,12 @@ async function loadAnalytics() {
   try {
     const params = new URLSearchParams();
     if (state.currentDB) params.set('db', state.currentDB);
-    
+
     const resp = await fetch('/api/analytics/db?' + params.toString());
     const data = await resp.json();
-    
+
     if (!resp.ok) return;
-    
+
     document.getElementById('stat-chats').textContent = data.chats || '-';
     document.getElementById('stat-qa').textContent = data.qa_pairs || '-';
     document.getElementById('stat-answered').textContent = data.answered || '-';

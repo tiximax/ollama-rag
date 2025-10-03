@@ -12,9 +12,9 @@ net session >nul 2>&1
 if %errorLevel% == 0 (
     echo Running with Administrator privileges...
     echo.
-    
+
     cd /d "%~dp0"
-    
+
     REM Install Ollama Service
     echo [1/2] Installing Ollama Service...
     nssm.exe install OllamaService ollama serve
@@ -24,7 +24,7 @@ if %errorLevel% == 0 (
     nssm.exe set OllamaService AppStderr "%~dp0logs\ollama_error.log"
     echo Done!
     echo.
-    
+
     REM Install Backend Service
     echo [2/2] Installing Backend Service...
     nssm.exe install OllamaRAGBackend python "-m uvicorn src.api.server:app --host 0.0.0.0 --port 8000"
@@ -36,14 +36,14 @@ if %errorLevel% == 0 (
     nssm.exe set OllamaRAGBackend DependOnService OllamaService
     echo Done!
     echo.
-    
+
     REM Start Services
     echo Starting services...
     net start OllamaService
     timeout /t 3 /nobreak >nul
     net start OllamaRAGBackend
     echo.
-    
+
     echo ========================================
     echo SUCCESS! Services installed and started
     echo ========================================

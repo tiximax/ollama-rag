@@ -1,0 +1,219 @@
+# 🚨 Prometheus Alerting Rules for Ollama RAG
+# Hướng dẫn sử dụng: Load file này vào Prometheus config
+
+groups:
+  - name: ollama_rag_critical
+    interval: 30s
+    rules:
+      # 🔥 High Error Rate - Tỷ lệ lỗi cao nguy hiểm!
+      - alert: HighQueryErrorRate
+        expr: rate(ollama_rag_query_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          component: rag_engine
+        annotations:
+          summary: "High error rate detected 🔥"
+          description: "Query error rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+          impact: "Users experiencing query failures"
+          action: "Check logs: `grep ERROR app/logs/*.log`"
+      
+      # 🐢 Very Slow Queries - Query chậm như rùa!
+      - alert: VerySlowQueries
+        expr: histogram_quantile(0.99, rate(ollama_rag_llm_response_seconds_bucket[5m])) > 60
+        for: 5m
+        labels:
+          severity: critical
+          component: llm
+        annotations:
+          summary: "99th percentile query time > 60s 🐢"
+          description: "P99 response time: {{ $value | humanizeDuration }}"
+          impact: "Extremely poor user experience"
+          action: "Check Ollama service health, consider increasing resources"
+      
+      # 💀 Ollama Service Down
+      - alert: OllamaServiceDown
+        expr: ollama_rag_ollama_health_status == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: ollama
+        annotations:
+          summary: "Ollama service is DOWN! 💀"
+          description: "Ollama health check failed"
+          impact: "All RAG queries will fail"
+          action: "Restart Ollama: `ollama serve`"
+      
+      # 📊 High Memory Usage
+      - alert: HighMemoryUsage
+        expr: ollama_rag_system_memory_percent > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Memory usage critical: {{ $value }}% 💾"
+          description: "System memory usage exceeds 90%"
+          impact: "Risk of OOM kills, performance degradation"
+          action: "Check memory leaks, restart services if needed"
+      
+  - name: ollama_rag_warnings
+    interval: 1m
+    rules:
+      # ⚠️ Slow Queries Warning
+      - alert: SlowQueries
+        expr: histogram_quantile(0.95, rate(ollama_rag_llm_response_seconds_bucket[10m])) > 30
+        for: 10m
+        labels:
+          severity: warning
+          component: llm
+        annotations:
+          summary: "Query performance degraded ⚠️"
+          description: "P95 response time: {{ $value | humanizeDuration }} (threshold: 30s)"
+          impact: "User experience degrading"
+          action: "Monitor system resources, check Ollama logs"
+      
+      # 📉 Low Cache Hit Rate
+      - alert: LowCacheHitRate
+        expr: |
+          (
+            sum(rate(ollama_rag_cache_hits_total[10m])) /
+            (sum(rate(ollama_rag_cache_hits_total[10m])) + sum(rate(ollama_rag_cache_misses_total[10m])))
+          ) < 0.3
+        for: 15m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Cache hit rate < 30% 📉"
+          description: "Current hit rate: {{ $value | humanizePercentage }}"
+          impact: "Increased latency, higher load on LLM"
+          action: "Check cache configuration, consider increasing TTL"
+      
+      # 🔄 High Request Rate
+      - alert: HighRequestRate
+        expr: rate(http_requests_total{job="ollama_rag"}[5m]) > 100
+        for: 5m
+        labels:
+          severity: info
+          component: api
+        annotations:
+          summary: "High traffic detected 🔄"
+          description: "Request rate: {{ $value | humanize }} req/s"
+          impact: "Increased resource usage"
+          action: "Monitor performance, consider scaling"
+      
+      # 💾 Database Size Warning
+      - alert: LargeDatabaseSize
+        expr: ollama_rag_db_size_bytes > 5e9  # 5GB
+        for: 1h
+        labels:
+          severity: info
+          component: database
+        annotations:
+          summary: "Database size > 5GB 💾"
+          description: "DB size: {{ $value | humanize1024 }}B"
+          impact: "Slower queries, higher memory usage"
+          action: "Consider archiving old data or optimizing"
+      
+  - name: ollama_rag_performance
+    interval: 2m
+    rules:
+      # 🎯 Retrieval Performance
+      - alert: SlowRetrieval
+        expr: histogram_quantile(0.90, rate(ollama_rag_retrieval_seconds_bucket[10m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: retrieval
+        annotations:
+          summary: "Document retrieval slow 🎯"
+          description: "P90 retrieval time: {{ $value | humanizeDuration }}"
+          impact: "Increased overall query latency"
+          action: "Check vector DB performance, consider reindexing"
+      
+      # 🔄 Reranking Performance
+      - alert: SlowReranking
+        expr: |
+          histogram_quantile(0.90, 
+            rate(ollama_rag_rerank_seconds_bucket{enabled="true"}[10m])
+          ) > 3
+        for: 10m
+        labels:
+          severity: info
+          component: reranker
+        annotations:
+          summary: "Reranking taking too long 🔄"
+          description: "P90 reranking time: {{ $value | humanizeDuration }}"
+          impact: "Minor latency increase"
+          action: "Consider adjusting reranker batch size or disabling for speed"
+      
+  - name: ollama_rag_availability
+    interval: 30s
+    rules:
+      # ❤️ Service Health Check
+      - alert: ServiceUnhealthy
+        expr: up{job="ollama_rag"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: service
+        annotations:
+          summary: "Ollama RAG service down! ❤️"
+          description: "Service is not responding to health checks"
+          impact: "Complete service outage"
+          action: "Check service status, restart if needed"
+      
+      # 🔌 Multiple Services Down
+      - alert: MultipleServicesDown
+        expr: count(up{job="ollama_rag"} == 0) > 1
+        for: 2m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Multiple RAG instances down! 🔌"
+          description: "{{ $value }} instances are not responding"
+          impact: "Degraded availability, potential outage"
+          action: "Emergency escalation required"
+
+# 📚 Usage Instructions:
+# 
+# 1. Add to Prometheus config:
+#    ```yaml
+#    rule_files:
+#      - "alerts.yml"
+#    
+#    alerting:
+#      alertmanagers:
+#        - static_configs:
+#          - targets: ['localhost:9093']
+#    ```
+#
+# 2. Example Alertmanager config:
+#    ```yaml
+#    route:
+#      receiver: 'team-slack'
+#      group_by: ['alertname', 'severity']
+#      group_wait: 10s
+#      group_interval: 5m
+#      repeat_interval: 4h
+#    
+#    receivers:
+#      - name: 'team-slack'
+#        slack_configs:
+#          - api_url: 'YOUR_SLACK_WEBHOOK'
+#            channel: '#alerts'
+#            title: '{{ .GroupLabels.alertname }}'
+#            text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+#    ```
+#
+# 3. Test alerts:
+#    ```bash
+#    curl -X POST http://localhost:9090/-/reload
+#    ```
+
+# 🎯 Alert Severity Levels:
+# - critical: Immediate action required, service degraded
+# - warning: Action required soon, performance issues
+# - info: Informational, no immediate action needed

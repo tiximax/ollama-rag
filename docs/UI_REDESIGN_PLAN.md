@@ -3,7 +3,7 @@
 ## 🎯 Mục tiêu
 - **Giảm 60% controls hiển thị mặc định** (từ ~50 xuống ~20)
 - **Ẩn advanced options** vào tabs/accordions
-- **Responsive mobile-first** 
+- **Responsive mobile-first**
 - **Không làm mất tính năng** - chỉ tổ chức lại!
 
 ---
@@ -40,7 +40,7 @@
 
 **TRƯỚC (23 elements):**
 - DB select, new DB input, create/delete buttons
-- Ingest paths input, add button, file upload, ingest button  
+- Ingest paths input, add button, file upload, ingest button
 - Reload button, export button
 - Status indicators x2
 
@@ -83,7 +83,7 @@
     <option>📚 my-docs (current)</option>
     <option>📚 wiki-data</option>
   </select>
-  
+
   <!-- Chat history -->
   <div class="panel">
     <h3>💬 Lịch sử (5) <button class="icon" onclick="newChat()">➕</button></h3>
@@ -92,7 +92,7 @@
       <li>Hướng dẫn API</li>
     </ul>
   </div>
-  
+
   <!-- Upload simplified -->
   <div class="panel">
     <h3>➕ Thêm tài liệu</h3>
@@ -119,28 +119,28 @@
   <div id="result" class="result-box">
     <p class="placeholder">Nhập câu hỏi và nhấn Enter... 💡</p>
   </div>
-  
+
   <!-- Context cards (nếu có) -->
   <div id="contexts" class="context-cards"></div>
-  
+
   <!-- Advanced options (COLLAPSED by default) -->
   <details id="advanced-options">
     <summary>⚙️ Tùy chọn nâng cao</summary>
     <div class="adv-grid">
-      <label>Phương pháp: 
+      <label>Phương pháp:
         <select id="method">
           <option>Vector (semantic)</option>
           <option>BM25 (keywords)</option>
           <option>Hybrid</option>
         </select>
       </label>
-      
+
       <label>Top-K: <input type="number" id="topk" value="5" min="1" max="20" /></label>
-      
+
       <label><input type="checkbox" id="rerank" /> Reranker</label>
       <label><input type="checkbox" id="rewrite" /> Query Rewrite</label>
       <label><input type="checkbox" id="multihop" /> Multi-hop</label>
-      
+
       <!-- More detailed options in nested <details> -->
       <details>
         <summary>Reranker settings</summary>
@@ -188,14 +188,14 @@
   --success: #10b981;
   --error: #ef4444;
   --warning: #f59e0b;
-  
+
   /* Spacing */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 12px;
   --space-lg: 16px;
   --space-xl: 24px;
-  
+
   /* Radius */
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -231,7 +231,7 @@ const AppState = {
   currentChat: null,
   provider: 'ollama',
   settings: { ... },
-  
+
   // Methods
   updateDB(name) { ... },
   saveSettings() { ... },

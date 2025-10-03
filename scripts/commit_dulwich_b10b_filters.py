@@ -1,5 +1,6 @@
-from dulwich import porcelain
 import sys
+
+from dulwich import porcelain
 
 msg_lines = [
     "feat(citations): add filters (sources/versions/languages) to export + UI + e2e",

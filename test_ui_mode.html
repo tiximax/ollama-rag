@@ -129,27 +129,27 @@ setTimeout(() => {
   const root = document.querySelector('.ui-root');
   const isSimple = root?.classList.contains('simple-mode');
   console.log('✓ Simple mode active:', isSimple);
-  
+
   // 3. Check ẩn/hiện elements
   const hiddenEls = [
     '#db-new-name', '#btn-db-create', '#btn-db-delete',
     '#ingest-paths', '#panel-docs', '#panel-stats', '#panel-advanced'
   ];
-  
+
   hiddenEls.forEach(sel => {
     const el = document.querySelector(sel);
     const isHidden = el && window.getComputedStyle(el).display === 'none';
     console.log(isHidden ? '✓' : '✗', sel, 'hidden:', isHidden);
   });
-  
+
   // 4. Check localStorage
   const saved = localStorage.getItem('ollama-rag-ui-mode');
   console.log('✓ localStorage saved:', saved);
-  
+
   console.log('\\n🎉 Test completed! Check logs above.');
 }, 500);
 `;
-      
+
       alert('Copy đoạn code sau và paste vào DevTools Console của http://localhost:8000:\\n\\n' + code);
       navigator.clipboard.writeText(code).then(() => {
         alert('✅ Đã copy vào clipboard! Giờ:\\n1. Mở http://localhost:8000\\n2. F12 mở DevTools\\n3. Paste code vào Console\\n4. Enter để chạy');
@@ -160,7 +160,7 @@ setTimeout(() => {
       const key = 'ollama-rag-ui-mode';
       const val = localStorage.getItem(key);
       const results = document.getElementById('results');
-      
+
       if (val) {
         results.innerHTML = `
           <h2>📊 localStorage Test</h2>

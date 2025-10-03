@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict, Any, Tuple, Optional
+from typing import Any
 
 # Optional deps
 try:
@@ -26,14 +26,19 @@ class BgeOnnxReranker:
     Nếu không khả dụng, phương thức available() sẽ trả về False.
     """
 
-    def __init__(self, repo_id: str = "BAAI/bge-reranker-v2-m3", onnx_filename: str = "onnx/model.onnx", max_length: int = 512):
+    def __init__(
+        self,
+        repo_id: str = "BAAI/bge-reranker-v2-m3",
+        onnx_filename: str = "onnx/model.onnx",
+        max_length: int = 512,
+    ):
         self.repo_id = repo_id
         self.onnx_filename = onnx_filename
         self.max_length = max_length
-        self._session: Optional["ort.InferenceSession"] = None
+        self._session: ort.InferenceSession | None = None
         self._tokenizer = None
-        self._input_names: List[str] = []
-        self._output_names: List[str] = []
+        self._input_names: list[str] = []
+        self._output_names: list[str] = []
         self._init_try()
 
     def available(self) -> bool:
@@ -62,7 +67,9 @@ class BgeOnnxReranker:
                     sess_options.inter_op_num_threads = inter
             except Exception:
                 pass
-            self._session = ort.InferenceSession(model_path, sess_options=sess_options, providers=["CPUExecutionProvider"])  # type: ignore[arg-type]
+            self._session = ort.InferenceSession(
+                model_path, sess_options=sess_options, providers=["CPUExecutionProvider"]
+            )  # type: ignore[arg-type]
             self._input_names = [i.name for i in self._session.get_inputs()]
             self._output_names = [o.name for o in self._session.get_outputs()]
             self._tokenizer = AutoTokenizer.from_pretrained(self.repo_id, use_fast=True)
@@ -72,22 +79,22 @@ class BgeOnnxReranker:
             self._input_names = []
             self._output_names = []
 
-    def score(self, query: str, docs: List[str], batch_size: int = 16) -> List[float]:
+    def score(self, query: str, docs: list[str], batch_size: int = 16) -> list[float]:
         if not self.available():
             raise RuntimeError("BGE ONNX reranker not available")
         assert self._session is not None and self._tokenizer is not None
-        scores: List[float] = []
+        scores: list[float] = []
         for i in range(0, len(docs), batch_size):
-            batch = docs[i:i+batch_size]
+            batch = docs[i : i + batch_size]
             enc = self._tokenizer(
                 [query] * len(batch),
                 batch,
                 truncation=True,
                 padding=True,
                 max_length=self.max_length,
-                return_tensors='np'
+                return_tensors='np',
             )
-            inputs: Dict[str, np.ndarray] = {}
+            inputs: dict[str, np.ndarray] = {}
             for name in self._input_names:
                 if name in enc:
                     arr = enc[name]
@@ -110,13 +117,20 @@ class BgeOnnxReranker:
             scores.extend(logits.tolist())
         return scores
 
-    def rerank(self, query: str, docs: List[str], metas: List[Dict[str, Any]], top_k: int, batch_size: int = 16) -> Tuple[List[str], List[Dict[str, Any]]]:
+    def rerank(
+        self,
+        query: str,
+        docs: list[str],
+        metas: list[dict[str, Any]],
+        top_k: int,
+        batch_size: int = 16,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
         scores = self.score(query, docs, batch_size=batch_size)
         idxs = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
         return [docs[i] for i in idxs], [metas[i] for i in idxs]
 
 
-def cosine_similarity(a: List[float], b: List[float]) -> float:
+def cosine_similarity(a: list[float], b: list[float]) -> float:
     va = np.array(a, dtype=np.float32)
     vb = np.array(b, dtype=np.float32)
     na = np.linalg.norm(va) + 1e-12
@@ -130,14 +144,13 @@ class SimpleEmbedReranker:
     def __init__(self, embedder):
         self.embedder = embedder  # callable: List[str] -> List[List[float]]
 
-    def rerank(self, query: str, docs: List[str], metas: List[Dict[str, Any]], top_k: int) -> Tuple[List[str], List[Dict[str, Any]]]:
+    def rerank(
+        self, query: str, docs: list[str], metas: list[dict[str, Any]], top_k: int
+    ) -> tuple[list[str], list[dict[str, Any]]]:
         embs = self.embedder([query] + docs)
         q_emb = embs[0]
         d_embs = embs[1:]
-        pairs = [
-            (cosine_similarity(q_emb, d_embs[i]), i)
-            for i in range(len(docs))
-        ]
+        pairs = [(cosine_similarity(q_emb, d_embs[i]), i) for i in range(len(docs))]
         pairs.sort(key=lambda x: x[0], reverse=True)
         idxs = [i for _, i in pairs[:top_k]]
         return [docs[i] for i in idxs], [metas[i] for i in idxs]

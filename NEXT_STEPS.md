@@ -17,11 +17,11 @@ Your app is production-ready! Here's what to do next based on your goals.
    ```powershell
    # Check services
    Get-Service OllamaService, OllamaRAGBackend
-   
+
    # Test API
    curl http://localhost:8000/health
    curl http://localhost:8000/docs
-   
+
    # Test query
    $body = @{query='What is RAG?'; k=3} | ConvertTo-Json
    Invoke-RestMethod -Uri http://localhost:8000/api/query -Method Post -Body $body -ContentType 'application/json'
@@ -37,7 +37,7 @@ Your app is production-ready! Here's what to do next based on your goals.
    ```powershell
    # View logs
    .\manage-services.ps1 logs
-   
+
    # Health check
    .\manage-services.ps1 health
    ```
@@ -154,10 +154,10 @@ Instrumentator().instrument(app).expose(app)
 async def hyde_retrieval(query: str):
     # Generate hypothetical answer
     hypo_doc = await llm.generate(f"Write a passage that answers: {query}")
-    
+
     # Use hypothetical doc for retrieval
     results = retriever.search(hypo_doc, k=5)
-    
+
     # Re-rank with original query
     return reranker.rerank(query, results)
 ```
@@ -268,13 +268,13 @@ app.include_router(
    on:
      push:
        branches: [master]
-   
+
    jobs:
      test:
        - pytest tests/
        - mypy src/
        - ruff check src/
-     
+
      deploy:
        - docker build
        - push to registry
@@ -431,6 +431,6 @@ Choose your path:
 
 **Built with ❤️ for the RAG community**
 
-**Version**: 0.4.0  
-**Last Updated**: 2025-10-03  
+**Version**: 0.4.0
+**Last Updated**: 2025-10-03
 **Status**: Production Ready ✅

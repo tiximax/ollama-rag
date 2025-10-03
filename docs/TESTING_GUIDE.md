@@ -36,7 +36,7 @@
 #### 4. 📱 Responsive Design
 - Resize browser window
 - **Desktop (> 768px)**: Layout full-width
-- **Tablet/Mobile (< 768px)**: 
+- **Tablet/Mobile (< 768px)**:
   - Toast full-width
   - Input full-width
   - Single column
@@ -82,12 +82,12 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 #### Test 1: Toast on Success Operations ✅
 1. Navigate to http://localhost:8000
-2. **Create DB**: 
+2. **Create DB**:
    - Enter "test-db" → Click "Tạo DB"
    - **Expected**: Green success toast appears
 3. **Upload File**:
    - Select a .txt file → Click "Upload & Ingest"
-   - **Expected**: 
+   - **Expected**:
      - Loading overlay shows
      - Button has spinner
      - Success toast after upload
@@ -121,7 +121,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 #### Test 4: Keyboard Shortcuts ⌨️
 1. **Focus query input**: Press `Ctrl+K`
    - **Expected**: Input focused
-2. **Submit query**: 
+2. **Submit query**:
    - Type "What is RAG?" in input
    - Press `Ctrl+Enter`
    - **Expected**: Query submitted (same as clicking "Hỏi")
@@ -209,7 +209,7 @@ Compare these visual elements:
 
 ### Loading State Performance
 1. Monitor during document ingestion
-2. **Expected**: 
+2. **Expected**:
    - UI remains responsive
    - Loading overlay prevents clicks
    - No layout thrashing

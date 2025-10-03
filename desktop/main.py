@@ -1,30 +1,27 @@
-import os
-import sys
-import subprocess
-import time
-import signal
 import json
+import os
+import signal
+import subprocess
+import sys
 import threading
-from typing import Optional, Tuple
+import time
 
 import requests
-
-from PyQt6.QtCore import QUrl, QTimer
+from PyQt6.QtCore import QTimer, QUrl
+from PyQt6.QtGui import QAction
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QApplication,
-    QMainWindow,
-    QInputDialog,
-    QMessageBox,
     QDialog,
-    QLineEdit,
-    QSpinBox,
-    QFormLayout,
     QDialogButtonBox,
+    QFormLayout,
+    QInputDialog,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QSpinBox,
+    QToolBar,
 )
-from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QToolBar
-from PyQt6.QtWebEngineWidgets import QWebEngineView
-
 
 SERVER_URL = os.getenv("APP_URL", "http://127.0.0.1:8000")
 HOST = os.getenv("APP_HOST", "127.0.0.1")
@@ -57,7 +54,7 @@ def wait_server(url: str, total_timeout: float = 30.0) -> bool:
     return False
 
 
-def start_server(host: str, port: int) -> Optional[subprocess.Popen]:
+def start_server(host: str, port: int) -> subprocess.Popen | None:
     py = find_python_exe()
     env = os.environ.copy()
     cmd = [
@@ -73,9 +70,11 @@ def start_server(host: str, port: int) -> Optional[subprocess.Popen]:
     proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return proc
 
+
 # -------- Embedded server (for packaged builds) --------
-_embed_thread: Optional[threading.Thread] = None
+_embed_thread: threading.Thread | None = None
 _embed_server_obj = None
+
 
 def start_server_embedded(host: str, port: int) -> bool:
     """Start uvicorn server in-process in a background thread.
@@ -87,8 +86,10 @@ def start_server_embedded(host: str, port: int) -> bool:
         return True
     try:
         import uvicorn
+
         # Import lazily to avoid heavy imports before needed
         from app.main import app as _app
+
         config = uvicorn.Config(_app, host=host, port=port, log_level="info")
         server = uvicorn.Server(config)
         _embed_server_obj = server
@@ -113,6 +114,7 @@ def start_server_embedded(host: str, port: int) -> bool:
         _embed_server_obj = None
         return False
 
+
 def stop_server_embedded():
     global _embed_thread, _embed_server_obj
     try:
@@ -130,7 +132,7 @@ def stop_server_embedded():
     _embed_server_obj = None
 
 
-def start_server_if_needed(url: str, host: str, port: int) -> Optional[subprocess.Popen]:
+def start_server_if_needed(url: str, host: str, port: int) -> subprocess.Popen | None:
     if is_server_up(url):
         return None
     proc = start_server(host, port)
@@ -143,13 +145,13 @@ def start_server_if_needed(url: str, host: str, port: int) -> Optional[subproces
     return None
 
 
-def load_config() -> Tuple[str, str, int]:
+def load_config() -> tuple[str, str, int]:
     url = SERVER_URL
     host = HOST
     port = PORT
     try:
         if os.path.isfile(CONFIG_PATH):
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            with open(CONFIG_PATH, encoding="utf-8") as f:
                 data = json.load(f)
                 url = str(data.get("url", url))
                 host = str(data.get("host", host))
@@ -168,7 +170,14 @@ def save_config(url: str, host: str, port: int) -> None:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, server_proc: Optional[subprocess.Popen], url: str, host: str, port: int, embedded: bool = False):
+    def __init__(
+        self,
+        server_proc: subprocess.Popen | None,
+        url: str,
+        host: str,
+        port: int,
+        embedded: bool = False,
+    ):
         super().__init__()
         self.server_proc = server_proc
         self.embedded = embedded
@@ -275,8 +284,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "About",
-            "Ollama RAG Desktop\nPyQt6 + QWebEngineView\n"
-            f"URL: {self.current_url}",
+            "Ollama RAG Desktop\nPyQt6 + QWebEngineView\n" f"URL: {self.current_url}",
         )
 
     def poll_server(self):
@@ -312,7 +320,9 @@ class MainWindow(QMainWindow):
 
     def menu_start_server(self):
         if self.server_proc is not None:
-            QMessageBox.information(self, "Server", "Server is already running (started by Desktop).")
+            QMessageBox.information(
+                self, "Server", "Server is already running (started by Desktop)."
+            )
             return
         self.server_proc = start_server(self.host, self.port)
         if wait_server(self.current_url, total_timeout=30.0):
@@ -351,9 +361,9 @@ def main():
     # Khi chạy dạng packaged (PyInstaller), chạy server embedded để tránh phụ thuộc python.exe ngoài
     is_frozen = bool(getattr(sys, "frozen", False))
 
-    server_proc: Optional[subprocess.Popen] = None
+    server_proc: subprocess.Popen | None = None
     embedded = False
-    if is_frozen or os.getenv("DESKTOP_EMBED_SERVER", "0").strip() in ("1", "true", "True"): 
+    if is_frozen or os.getenv("DESKTOP_EMBED_SERVER", "0").strip() in ("1", "true", "True"):
         # Try embedded
         if not is_server_up(url):
             ok = start_server_embedded(host, port)
@@ -383,13 +393,19 @@ class SettingsDialog(QDialog):
         form.addRow("Host:", self.host_edit)
         form.addRow("Port:", self.port_spin)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         form.addWidget(buttons)
 
-    def values(self) -> Tuple[str, str, int]:
-        return self.url_edit.text().strip(), self.host_edit.text().strip(), int(self.port_spin.value())
+    def values(self) -> tuple[str, str, int]:
+        return (
+            self.url_edit.text().strip(),
+            self.host_edit.text().strip(),
+            int(self.port_spin.value()),
+        )
 
 
 if __name__ == "__main__":

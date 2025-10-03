@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 API tests for /api/health and /api/docs (list/delete) using FastAPI TestClient.
 Uses a lightweight FakeCollection to avoid touching real Chroma state.
 """
 
 import unittest
-from typing import List, Dict, Any
+from typing import Any
 
 from fastapi.testclient import TestClient
+
 from app.main import app, engine
 
 
 class FakeCollection:
-    def __init__(self, metadatas: List[Dict[str, Any]] = None):
+    def __init__(self, metadatas: list[dict[str, Any]] = None):
         self.metas = list(metadatas or [])
         # build ids map by source
         self.ids_by_source = {}
@@ -79,7 +79,9 @@ class ApiHealthDocsTests(unittest.TestCase):
         orig = engine.collection
         try:
             # Prepare two sources, delete one
-            engine.collection = FakeCollection(metadatas=[{"source": "a.txt"}, {"source": "a.txt"}, {"source": "b.txt"}])
+            engine.collection = FakeCollection(
+                metadatas=[{"source": "a.txt"}, {"source": "a.txt"}, {"source": "b.txt"}]
+            )
             r = self.client.request("DELETE", "/api/docs", json={"sources": ["a.txt"]})
             self.assertEqual(r.status_code, 200, r.text)
             data = r.json()

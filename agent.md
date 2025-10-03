@@ -123,12 +123,12 @@ Xây dựng ứng dụng RAG dùng Ollama (local) với UI web đơn giản, h�
 
 ## Tiến trình gần nhất
 - 2025-09-21: Thêm Provider switch (OpenAI/Ollama), UI dropdown, API /api/provider; giữ Embeddings bằng Ollama. Test e2e (light) không hồi quy.
-- 2025-09-23: B6 — Versioning + Language filtering: 
+- 2025-09-23: B6 — Versioning + Language filtering:
   - Ingest: tự động nhận diện ngôn ngữ từng chunk bằng langid; thêm metadata version (nhập tay từ UI, fallback hash nội dung).
   - Retrieval: thêm lọc theo languages[]/versions[] cho vector, BM25, hybrid, aggregate và multi-hop.
   - API: mở rộng body cho /api/query, /api/stream_query, /api/multihop_query, /api/stream_multihop_query; thêm /api/filters trả về danh sách distinct language/version theo DB.
   - UI: thêm Ingest Version, Ingest Paths (tùy chọn), bộ lọc Language/Version (multi-select) trong panel truy vấn.
-  - Tests: thêm tests/e2e/filters.spec.js (BM25 + streaming) để kiểm tra lọc theo ngôn ngữ và phiên bản. 
+  - Tests: thêm tests/e2e/filters.spec.js (BM25 + streaming) để kiểm tra lọc theo ngôn ngữ và phiên bản.
 - 2025-09-23: B7 — Offline evaluation:
   - API: thêm /api/eval/offline nhận dataset JSON (queries[], k, method, filters); tính recall@k dựa trên expected_sources/expected_substrings.
   - UI: panel "Offline Evaluation" với textarea nhập JSON và nút Run Eval, hiển thị Recall@k (hits/N).

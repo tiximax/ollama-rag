@@ -76,7 +76,7 @@ ingress:
   # Route for main app
   - hostname: ollama-rag.yourdomain.com
     service: http://localhost:8000
-  
+
   # Catch-all rule (required)
   - service: http_status:404
 ```
@@ -162,17 +162,17 @@ ingress:
   # Frontend
   - hostname: ollama-rag.yourdomain.com
     service: http://localhost:8000
-  
+
   # API only
   - hostname: api.ollama-rag.yourdomain.com
     service: http://localhost:8000
     path: ^/api/.*
-  
+
   # Health check
   - hostname: health.ollama-rag.yourdomain.com
     service: http://localhost:8000
     path: ^/health
-  
+
   # Catch-all
   - service: http_status:404
 ```

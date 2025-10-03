@@ -1,6 +1,7 @@
-import os
 import json
-from typing import Any, Dict, List
+import os
+from typing import Any
+
 
 class FeedbackStore:
     def __init__(self, persist_root: str):
@@ -14,17 +15,17 @@ class FeedbackStore:
         os.makedirs(d, exist_ok=True)
         return os.path.join(d, "feedback.jsonl")
 
-    def append(self, db: str, item: Dict[str, Any]) -> None:
+    def append(self, db: str, item: dict[str, Any]) -> None:
         path = self._file_path(db)
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-    def list(self, db: str, limit: int = 50) -> List[Dict[str, Any]]:
+    def list(self, db: str, limit: int = 50) -> list[dict[str, Any]]:
         path = self._file_path(db)
         if not os.path.exists(path):
             return []
-        items: List[Dict[str, Any]] = []
-        with open(path, "r", encoding="utf-8") as f:
+        items: list[dict[str, Any]] = []
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -42,7 +43,7 @@ class FeedbackStore:
         if not os.path.exists(path):
             return 0
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 cnt = sum(1 for _ in f)
         except Exception:
             cnt = 0

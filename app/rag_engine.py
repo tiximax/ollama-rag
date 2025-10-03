@@ -1,30 +1,29 @@
-import os
-import uuid
-import re
-import shutil
+import contextlib
+import hashlib
 import json
 import logging
-import time
-import hashlib
-import contextlib
+import os
+import re
+import shutil
 import threading
-from typing import List, Dict, Any, Sequence, Optional, Tuple
+import time
+import uuid
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as _np  # for FAISS cosine and array building
-
-from dotenv import load_dotenv
-
 from chromadb import PersistentClient
 from chromadb.api.types import Documents, Embeddings, IDs, Metadatas
 from chromadb.config import Settings
+from dotenv import load_dotenv
 
+from .cache_utils import LRUCacheWithTTL
+from .exceptions import IngestError
+from .file_utils import read_file_by_extension
+from .gen_cache import GenCache
 from .ollama_client import OllamaClient
 from .openai_client import OpenAIClient  # type: ignore
 from .reranker import BgeOnnxReranker, SimpleEmbedReranker
-from .gen_cache import GenCache
-from .exceptions import IngestError, RetrievalError, GenerationError, DatabaseError
-from .cache_utils import LRUCacheWithTTL
-from .file_utils import read_file_by_extension
 
 try:
     from rank_bm25 import BM25Okapi  # type: ignore
@@ -68,9 +67,9 @@ RRF_ENABLE_DEFAULT = os.getenv("RRF_ENABLE", "1").strip() not in ("0", "false", 
 RRF_K_DEFAULT = int(os.getenv("RRF_K", "60"))
 
 
-def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
+def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
     text = text.replace("\r\n", "\n")
-    chunks: List[str] = []
+    chunks: list[str] = []
     start = 0
     n = len(text)
     while start < n:
@@ -90,11 +89,11 @@ def extract_text_from_pdf(path: str) -> str:
     try:
         from pypdf import PdfReader
     except ImportError as e:
-        raise IngestError(f"pypdf not installed. Run: pip install pypdf") from e
-    
+        raise IngestError("pypdf not installed. Run: pip install pypdf") from e
+
     try:
         reader = PdfReader(path)
-        texts: List[str] = []
+        texts: list[str] = []
         for page in reader.pages:
             t = page.extract_text() or ""
             if t:
@@ -103,6 +102,7 @@ def extract_text_from_pdf(path: str) -> str:
     except Exception as e:
         # Log error but return empty string for graceful degradation
         import logging
+
         logging.warning(f"Failed to extract PDF {path}: {e}")
         return ""
 
@@ -112,8 +112,8 @@ def extract_text_from_docx(path: str) -> str:
     try:
         from docx import Document
     except ImportError as e:
-        raise IngestError(f"python-docx not installed. Run: pip install python-docx") from e
-    
+        raise IngestError("python-docx not installed. Run: pip install python-docx") from e
+
     try:
         doc = Document(path)
         paras = [p.text for p in doc.paragraphs if p.text and p.text.strip()]
@@ -121,6 +121,7 @@ def extract_text_from_docx(path: str) -> str:
     except Exception as e:
         # Log error but return empty string for graceful degradation
         import logging
+
         logging.warning(f"Failed to extract DOCX {path}: {e}")
         return ""
 
@@ -136,7 +137,13 @@ class OllamaEmbeddingFunction:
 
 
 class RagEngine:
-    def __init__(self, persist_dir: Optional[str] = DEFAULT_PERSIST, collection_name: str = "docs", persist_root: Optional[str] = None, db_name: Optional[str] = None):
+    def __init__(
+        self,
+        persist_dir: str | None = DEFAULT_PERSIST,
+        collection_name: str = "docs",
+        persist_root: str | None = None,
+        db_name: str | None = None,
+    ):
         # Determine persist_root and db_name
         if persist_dir:
             root = os.path.dirname(persist_dir)
@@ -149,7 +156,7 @@ class RagEngine:
         self.collection_name = collection_name
 
         self.ollama = OllamaClient()
-        self._openai: Optional[OpenAIClient] = None
+        self._openai: OpenAIClient | None = None
         self.default_provider = os.getenv("PROVIDER", "ollama").lower()
         self.vector_backend = VECTOR_BACKEND if _faiss is not None else "chroma"
         # Initialize storage and client
@@ -160,17 +167,17 @@ class RagEngine:
 
         # BM25 state (in-memory)
         self._bm25 = None  # type: ignore
-        self._bm25_docs: List[str] = []
-        self._bm25_metas: List[Dict[str, Any]] = []
-        self._bm25_tokens: List[List[str]] = []
+        self._bm25_docs: list[str] = []
+        self._bm25_metas: list[dict[str, Any]] = []
+        self._bm25_tokens: list[list[str]] = []
         self._bm25_lock = threading.RLock()  # Reentrant lock for BM25 operations
-        
+
         # Reranker
-        self._bge_rr: Optional[BgeOnnxReranker] = None
-        self._embed_rr: Optional[SimpleEmbedReranker] = None
-        
+        self._bge_rr: BgeOnnxReranker | None = None
+        self._embed_rr: SimpleEmbedReranker | None = None
+
         # ✅ FIX BUG #7: Dùng LRU cache với TTL và size limit - Ngăn memory leak 🧹
-        self._filters_cache = LRUCacheWithTTL[List[str]](max_size=100, ttl=300)
+        self._filters_cache = LRUCacheWithTTL[list[str]](max_size=100, ttl=300)
 
     # ===== Multi-DB =====
     @property
@@ -182,7 +189,9 @@ class RagEngine:
         # Ensure corpus stamp exists
         self._ensure_corpus_stamp()
         try:
-            self.client = PersistentClient(path=self.persist_dir, settings=Settings(anonymized_telemetry=False))
+            self.client = PersistentClient(
+                path=self.persist_dir, settings=Settings(anonymized_telemetry=False)
+            )
         except Exception:
             # Fallback nếu phiên bản chromadb không hỗ trợ Settings
             self.client = PersistentClient(path=self.persist_dir)
@@ -207,7 +216,7 @@ class RagEngine:
             if not os.path.isfile(p):
                 with open(p, "w", encoding="utf-8") as f:
                     f.write(str(int(time.time())))
-            with open(p, "r", encoding="utf-8") as f:
+            with open(p, encoding="utf-8") as f:
                 self._corpus_stamp = f.read().strip()
         except Exception:
             self._corpus_stamp = "0"
@@ -227,22 +236,23 @@ class RagEngine:
 
     def _faiss_index_path(self) -> str:
         return os.path.join(self.persist_dir, "faiss.index")
-    
+
     @contextlib.contextmanager
     def _faiss_connection(self):
         """
         Context manager cho FAISS SQLite connection.
-        
+
         ✅ FIX BUG #5: Proper error handling và logging thay vì silent fail
         """
         import sqlite3 as _sqlite3
+
         conn = None
         try:
             # ✅ Add timeout để tránh deadlock
             conn = _sqlite3.connect(
                 self._faiss_map_path(),
                 timeout=5.0,  # 5 seconds timeout
-                check_same_thread=False  # Allow multi-thread (use carefully!)
+                check_same_thread=False,  # Allow multi-thread (use carefully!)
             )
             yield conn
         except _sqlite3.Error as e:
@@ -265,13 +275,15 @@ class RagEngine:
             # Create tables using context manager
             with self._faiss_connection() as conn:
                 cur = conn.cursor()
-                cur.execute("CREATE TABLE IF NOT EXISTS map (idx INTEGER PRIMARY KEY, id TEXT UNIQUE)")
+                cur.execute(
+                    "CREATE TABLE IF NOT EXISTS map (idx INTEGER PRIMARY KEY, id TEXT UNIQUE)"
+                )
                 cur.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)")
                 conn.commit()
-            
+
             # Keep _faiss_map_conn = None, use context manager for queries
             self._faiss_map_conn = None
-            
+
             # load index if exists
             idx_path = self._faiss_index_path()
             if os.path.isfile(idx_path):
@@ -283,7 +295,7 @@ class RagEngine:
             self._faiss_map_conn = None
             # fail soft: will fallback to chroma
 
-    def _faiss_map_get_idx(self, idv: str) -> Optional[int]:
+    def _faiss_map_get_idx(self, idv: str) -> int | None:
         """Get index for ID using context manager."""
         try:
             with self._faiss_connection() as conn:
@@ -293,23 +305,25 @@ class RagEngine:
         except Exception:
             return None
 
-    def _faiss_map_add_many(self, ids: List[str], start_idx: int) -> None:
+    def _faiss_map_add_many(self, ids: list[str], start_idx: int) -> None:
         """Add many IDs using context manager."""
         try:
             with self._faiss_connection() as conn:
                 cur = conn.cursor()
                 for i, idv in enumerate(ids):
-                    cur.execute("INSERT OR IGNORE INTO map(idx,id) VALUES(?,?)", (start_idx + i, idv))
+                    cur.execute(
+                        "INSERT OR IGNORE INTO map(idx,id) VALUES(?,?)", (start_idx + i, idv)
+                    )
                 conn.commit()
         except Exception:
             pass
 
-    def _faiss_id_by_idx(self, idxs: List[int]) -> List[Optional[str]]:
+    def _faiss_id_by_idx(self, idxs: list[int]) -> list[str | None]:
         """Get IDs by indexes using context manager."""
         try:
             with self._faiss_connection() as conn:
                 cur = conn.cursor()
-                out: List[Optional[str]] = []
+                out: list[str | None] = []
                 for i in idxs:
                     row = cur.execute("SELECT id FROM map WHERE idx=?", (int(i),)).fetchone()
                     out.append(str(row[0]) if row else None)
@@ -322,7 +336,7 @@ class RagEngine:
         norm = _np.linalg.norm(mat, axis=1, keepdims=True) + 1e-12
         return mat / norm
 
-    def _faiss_add(self, embeddings: List[List[float]], ids: List[str]) -> None:
+    def _faiss_add(self, embeddings: list[list[float]], ids: list[str]) -> None:
         if _faiss is None or not embeddings or not ids:
             return
         try:
@@ -340,7 +354,7 @@ class RagEngine:
             # fail soft
             pass
 
-    def _faiss_query(self, embedding: List[float], top_k: int) -> Tuple[List[str], List[float]]:
+    def _faiss_query(self, embedding: list[float], top_k: int) -> tuple[list[str], list[float]]:
         if _faiss is None or self._faiss_index is None:
             return [], []
         try:
@@ -350,9 +364,9 @@ class RagEngine:
             idx_list = [int(i) for i in idxs[0]]
             score_list = [float(s) for s in scores[0]]
             ids = self._faiss_id_by_idx(idx_list)
-            out_ids: List[str] = []
-            aligned_scores: List[float] = []
-            for maybe_id, sc in zip(ids, score_list):
+            out_ids: list[str] = []
+            aligned_scores: list[float] = []
+            for maybe_id, sc in zip(ids, score_list, strict=False):
                 if maybe_id is not None:
                     out_ids.append(maybe_id)
                     aligned_scores.append(sc)
@@ -360,7 +374,7 @@ class RagEngine:
         except Exception:
             return [], []
 
-    def list_dbs(self) -> List[str]:
+    def list_dbs(self) -> list[str]:
         if not os.path.isdir(self.persist_root):
             return []
         names = []
@@ -386,14 +400,15 @@ class RagEngine:
         """Switch to different DB. ✅ FIX BUG #10: Normalize name on Windows! 🎊"""
         if not self._valid_db_name(name):
             raise ValueError("Invalid db name")
-        
+
         # ✅ Normalize DB name for Windows case-insensitivity
         from .validators import normalize_db_name
+
         normalized_name = normalize_db_name(name)
-        
+
         if normalized_name == self.db_name:
             return self.db_name
-        
+
         self.db_name = normalized_name
         self._init_client()
         # Reset cache handle to new DB path
@@ -404,11 +419,12 @@ class RagEngine:
         """Create new DB. ✅ FIX BUG #10: Normalize name to avoid duplicates!"""
         if not self._valid_db_name(name):
             raise ValueError("Invalid db name")
-        
+
         # ✅ Normalize DB name for Windows case-insensitivity
         from .validators import normalize_db_name
+
         normalized_name = normalize_db_name(name)
-        
+
         p = os.path.join(self.persist_root, normalized_name)
         if os.path.exists(p):
             raise FileExistsError(f"DB '{normalized_name}' already exists")
@@ -419,39 +435,42 @@ class RagEngine:
         """Delete DB. ✅ FIX BUG #10: Normalize name for consistent deletion!"""
         if not self._valid_db_name(name):
             raise ValueError("Invalid db name")
-        
+
         # ✅ Normalize DB name for Windows case-insensitivity
         from .validators import normalize_db_name
+
         normalized_name = normalize_db_name(name)
-        
+
         p = os.path.join(self.persist_root, normalized_name)
         if not os.path.exists(p):
             return
         # If deleting current DB, switch to DEFAULT_DB (create if needed)
-        deleting_current = (normalized_name == self.db_name)
+        deleting_current = normalized_name == self.db_name
         shutil.rmtree(p, ignore_errors=True)
         if deleting_current:
             self.db_name = DEFAULT_DB
             self._init_client()
-            self.gen_cache = GenCache(self.persist_dir, enabled=GEN_CACHE_ENABLE, ttl_sec=GEN_CACHE_TTL)
-    
+            self.gen_cache = GenCache(
+                self.persist_dir, enabled=GEN_CACHE_ENABLE, ttl_sec=GEN_CACHE_TTL
+            )
+
     def cleanup(self) -> None:
         """Cleanup resources (call before shutdown)."""
         # Clear caches
         self._bm25 = None
         self._filters_cache.clear()
-        
+
         # Note: _faiss_map_conn is always None now (using context manager)
         # FAISS index will be garbage collected
         self._faiss_index = None
-        
+
         # Gen cache cleanup if needed
         if hasattr(self, 'gen_cache'):
             try:
                 del self.gen_cache
             except Exception:
                 pass
-    
+
     def __del__(self) -> None:
         """Destructor - cleanup resources."""
         try:
@@ -460,7 +479,7 @@ class RagEngine:
             pass
 
     # ===== Ingest =====
-    def _detect_lang(self, text: str) -> Optional[str]:
+    def _detect_lang(self, text: str) -> str | None:
         try:
             if langid is None:
                 return None
@@ -469,14 +488,19 @@ class RagEngine:
         except Exception:
             return None
 
-    def ingest_texts(self, texts: List[str], metadatas: List[Dict[str, Any]] | None = None, version: Optional[str] = None) -> int:
+    def ingest_texts(
+        self,
+        texts: list[str],
+        metadatas: list[dict[str, Any]] | None = None,
+        version: str | None = None,
+    ) -> int:
         ids: IDs = []
         docs: Documents = []
         mds: Metadatas = []
 
         for i, t in enumerate(texts):
             # Version cho cả tài liệu này (áp cho tất cả chunks)
-            ver = (version or (hashlib.md5(t.encode("utf-8")).hexdigest()[:8]))
+            ver = version or (hashlib.md5(t.encode("utf-8")).hexdigest()[:8])
             src_val = metadatas[i].get("source") if metadatas else f"text_{i}"
             for j, chunk in enumerate(chunk_text(t)):
                 ids.append(str(uuid.uuid4()))
@@ -506,21 +530,21 @@ class RagEngine:
         self._bump_corpus_stamp()
         return len(docs)
 
-    def ingest_paths(self, paths: List[str], version: Optional[str] = None) -> int:
+    def ingest_paths(self, paths: list[str], version: str | None = None) -> int:
         """
         Ingest files from paths với proper error handling.
-        
+
         ✅ FIX BUG #6: Specific exceptions, error tracking, file size limits
-        
+
         Returns:
             Number of chunks indexed
         """
         import glob
 
-        contents: List[str] = []
-        metas: List[Dict[str, Any]] = []
-        errors: List[Dict[str, str]] = []  # ✅ Track errors
-        
+        contents: list[str] = []
+        metas: list[dict[str, Any]] = []
+        errors: list[dict[str, str]] = []  # ✅ Track errors
+
         for p in paths:
             for file in glob.glob(p, recursive=True):
                 if os.path.isdir(file):
@@ -544,11 +568,13 @@ class RagEngine:
                     elif error:
                         logging.warning(f"Skipping {file}: {error}")
                         errors.append({"file": file, "error": error})
-        
+
         # ✅ Log summary
         if errors:
-            logging.warning(f"Ingest completed with {len(errors)} errors: {len(contents)} files processed")
-        
+            logging.warning(
+                f"Ingest completed with {len(errors)} errors: {len(contents)} files processed"
+            )
+
         if not contents:
             if errors:
                 raise IngestError(
@@ -556,11 +582,11 @@ class RagEngine:
                     f"First error: {errors[0]['error']}"
                 )
             return 0
-        
+
         return self.ingest_texts(contents, metas, version=version)
 
     # ===== Docs listing/deletion =====
-    def list_sources(self) -> List[Dict[str, Any]]:
+    def list_sources(self) -> list[dict[str, Any]]:
         """Return a list of unique sources with their chunk counts.
         Safe across ChromaDB versions by using .get(include=["metadatas"]) with fallback.
         """
@@ -570,7 +596,7 @@ class RagEngine:
         except Exception:
             results = self.collection.get()
             metas = results.get("metadatas", [])
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for md in metas:
             try:
                 src = str((md or {}).get("source") or "")
@@ -582,7 +608,7 @@ class RagEngine:
         items = [{"source": s, "chunks": c} for s, c in sorted(counts.items(), key=lambda x: x[0])]
         return items
 
-    def delete_sources(self, sources: List[str]) -> int:
+    def delete_sources(self, sources: list[str]) -> int:
         """Delete all chunks whose metadata.source is in the provided list.
         Returns the number of source entries attempted (not exact chunk count).
         """
@@ -601,7 +627,7 @@ class RagEngine:
                 pass
             # Fallback: try to fetch IDs then delete by ids
             try:
-                ids: List[str] = []
+                ids: list[str] = []
                 try:
                     res = self.collection.get(where={"source": s}, include=["ids"])  # type: ignore[arg-type]
                     raw_ids = res.get("ids", [])
@@ -628,7 +654,7 @@ class RagEngine:
 
     # ===== Tokenize & BM25 =====
     @staticmethod
-    def _tokenize(text: str) -> List[str]:
+    def _tokenize(text: str) -> list[str]:
         return re.findall(r"\w+", (text or "").lower())
 
     def _build_bm25_from_collection(self) -> None:
@@ -643,18 +669,18 @@ class RagEngine:
         try:
             # Try new API with include
             results = self.collection.get(include=["documents", "metadatas"])  # type: ignore[arg-type]
-            docs: List[str] = results.get("documents", [])  # type: ignore[assignment]
-            metas: List[Dict[str, Any]] = results.get("metadatas", [])  # type: ignore[assignment]
+            docs: list[str] = results.get("documents", [])  # type: ignore[assignment]
+            metas: list[dict[str, Any]] = results.get("metadatas", [])  # type: ignore[assignment]
         except Exception:
             # Fallback without include
             results = self.collection.get()
             docs = results.get("documents", [])  # type: ignore[assignment]
             metas = results.get("metadatas", [])  # type: ignore[assignment]
         # Filter empties keeping alignment
-        new_docs: List[str] = []
-        new_metas: List[Dict[str, Any]] = []
-        new_tokens: List[List[str]] = []
-        for d, m in zip(docs, metas):
+        new_docs: list[str] = []
+        new_metas: list[dict[str, Any]] = []
+        new_tokens: list[list[str]] = []
+        for d, m in zip(docs, metas, strict=False):
             if d and d.strip():
                 new_docs.append(d)
                 new_metas.append(m)
@@ -675,33 +701,35 @@ class RagEngine:
     def _ensure_bm25(self) -> bool:
         """
         Ensure BM25 index exists - THREAD-SAFE VERSION 🔒
-        
+
         Uses double-checked locking pattern to prevent race conditions:
         1. Check if _bm25 exists (fast path, no lock)
         2. If None, acquire lock
         3. Re-check if _bm25 exists (another thread may have initialized it)
         4. Build if still None
-        
+
         ✅ FIX BUG #4: Prevents multiple threads from rebuilding BM25 simultaneously
         """
         # Fast path: BM25 already exists
         if self._bm25 is not None:
             return True
-        
+
         # Slow path: Need to build BM25
         with self._bm25_lock:
             # Double-check after acquiring lock
             # (another thread may have built it while we waited for lock)
             if self._bm25 is None:
                 self._build_bm25_from_collection()
-            
+
             return self._bm25 is not None
 
     # ===== Retrieval =====
-    def _meta_match(self, meta: Dict[str, Any], languages: Optional[List[str]], versions: Optional[List[str]]) -> bool:
+    def _meta_match(
+        self, meta: dict[str, Any], languages: list[str] | None, versions: list[str] | None
+    ) -> bool:
         """
         Check if metadata matches filter criteria.
-        
+
         ✅ FIX BUG #11: Robust null/empty handling:
         - None filters → no filtering (match all)
         - Empty list [] → no filtering (match all)
@@ -711,7 +739,7 @@ class RagEngine:
         # ✅ Check if meta is None or empty dict
         if meta is None:
             meta = {}
-        
+
         # ✅ Languages filter - handle None, empty list, and None values
         if languages is not None and len(languages) > 0:
             lang = meta.get("language")
@@ -721,7 +749,7 @@ class RagEngine:
             # Check if language matches any in filter list
             if str(lang) not in set(languages):
                 return False
-        
+
         # ✅ Versions filter - handle None, empty list, and None values
         if versions is not None and len(versions) > 0:
             ver = meta.get("version")
@@ -731,10 +759,17 @@ class RagEngine:
             # Check if version matches any in filter list
             if str(ver) not in set(versions):
                 return False
-        
+
         return True
 
-    def retrieve(self, query: str, top_k: int = 5, *, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        languages: list[str] | None = None,
+        versions: list[str] | None = None,
+    ) -> dict[str, Any]:
         # If FAISS backend is enabled and available, use it and map IDs back from Chroma
         if self.vector_backend == "faiss" and _faiss is not None and self._faiss_index is not None:
             try:
@@ -744,8 +779,8 @@ class RagEngine:
                     # Fetch documents/metas for these ids from Chroma
                     try:
                         results = self.collection.get(ids=ids, include=["documents", "metadatas"])  # type: ignore[arg-type]
-                        docs_all: List[str] = results.get("documents", [])
-                        metas_all: List[Dict[str, Any]] = results.get("metadatas", [])
+                        docs_all: list[str] = results.get("documents", [])
+                        metas_all: list[dict[str, Any]] = results.get("metadatas", [])
                     except Exception:
                         results = self.collection.get(ids=ids)
                         docs_all = results.get("documents", [])
@@ -760,10 +795,10 @@ class RagEngine:
                         if i < len(metas_all):
                             id_to_meta[idv] = metas_all[i]
                     # Filter and keep order
-                    filt_docs: List[str] = []
-                    filt_metas: List[Dict[str, Any]] = []
-                    filt_dists: List[float] = []
-                    for idv, s in zip(ids, scores):
+                    filt_docs: list[str] = []
+                    filt_metas: list[dict[str, Any]] = []
+                    filt_dists: list[float] = []
+                    for idv, s in zip(ids, scores, strict=False):
                         d = id_to_doc.get(idv)
                         m = id_to_meta.get(idv, {})
                         if not d:
@@ -776,7 +811,12 @@ class RagEngine:
                             filt_dists.append(dist)
                         if len(filt_docs) >= top_k:
                             break
-                    return {"documents": filt_docs[:top_k], "metadatas": filt_metas[:top_k], "distances": filt_dists[:top_k], "ids": ids[:len(filt_docs)]}
+                    return {
+                        "documents": filt_docs[:top_k],
+                        "metadatas": filt_metas[:top_k],
+                        "distances": filt_dists[:top_k],
+                        "ids": ids[: len(filt_docs)],
+                    }
             except Exception:
                 # fallback to chroma below
                 pass
@@ -784,16 +824,18 @@ class RagEngine:
         n_fetch = max(top_k * 5, 25)
         n_fetch = min(n_fetch, 200)
         results = self.collection.query(query_texts=[query], n_results=n_fetch)
-        docs_all: List[str] = results.get("documents", [[]])[0]
-        metas_all: List[Dict[str, Any]] = results.get("metadatas", [[]])[0]
-        dists_all: List[float] = results.get("distances", [[]])[0]
+        docs_all: list[str] = results.get("documents", [[]])[0]
+        metas_all: list[dict[str, Any]] = results.get("metadatas", [[]])[0]
+        dists_all: list[float] = results.get("distances", [[]])[0]
         ids_all = results.get("ids", [[]])[0] if "ids" in results else []
         # Lọc theo metadata và giữ thứ tự
-        filt_docs: List[str] = []
-        filt_metas: List[Dict[str, Any]] = []
-        filt_dists: List[float] = []
-        filt_ids: List[str] = []
-        for d, m, dist, idv in zip(docs_all, metas_all, dists_all, ids_all or [None] * len(docs_all)):
+        filt_docs: list[str] = []
+        filt_metas: list[dict[str, Any]] = []
+        filt_dists: list[float] = []
+        filt_ids: list[str] = []
+        for d, m, dist, idv in zip(
+            docs_all, metas_all, dists_all, ids_all or [None] * len(docs_all), strict=False
+        ):
             if self._meta_match(m or {}, languages, versions):
                 filt_docs.append(d)
                 filt_metas.append(m)
@@ -802,18 +844,30 @@ class RagEngine:
                     filt_ids.append(idv)  # type: ignore[arg-type]
             if len(filt_docs) >= top_k:
                 break
-        return {"documents": filt_docs[:top_k], "metadatas": filt_metas[:top_k], "distances": filt_dists[:top_k], "ids": filt_ids[:top_k] if filt_ids else []}
+        return {
+            "documents": filt_docs[:top_k],
+            "metadatas": filt_metas[:top_k],
+            "distances": filt_dists[:top_k],
+            "ids": filt_ids[:top_k] if filt_ids else [],
+        }
 
-    def retrieve_bm25(self, query: str, top_k: int = 5, *, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
+    def retrieve_bm25(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        languages: list[str] | None = None,
+        versions: list[str] | None = None,
+    ) -> dict[str, Any]:
         if not self._ensure_bm25():
             return {"documents": [], "metadatas": [], "scores": []}
-        
+
         with self._bm25_lock:
             q_tokens = self._tokenize(query)
             scores_list = list(self._bm25.get_scores(q_tokens))  # type: ignore[union-attr]
         # chỉ lấy các chỉ số khớp filter theo thứ tự điểm giảm dần
         idxs_sorted = sorted(range(len(scores_list)), key=lambda i: scores_list[i], reverse=True)
-        sel: List[int] = []
+        sel: list[int] = []
         for i in idxs_sorted:
             if self._meta_match(self._bm25_metas[i] or {}, languages, versions):
                 sel.append(i)
@@ -825,10 +879,10 @@ class RagEngine:
         return {"documents": docs, "metadatas": metas, "scores": scores}
 
     @staticmethod
-    def _to_similarity(distances: List[float]) -> List[float]:
+    def _to_similarity(distances: list[float]) -> list[float]:
         """
         Convert distances to similarities.
-        
+
         ✅ FIX BUG #12: Handle NaN/Inf gracefully để tránh propagate lỗi!
         """
         sims = []
@@ -847,10 +901,10 @@ class RagEngine:
         return sims
 
     @staticmethod
-    def _min_max(values: List[float]) -> List[float]:
+    def _min_max(values: list[float]) -> list[float]:
         """
         Min-max normalization to [0, 1] range.
-        
+
         ✅ FIX BUG #12: Safe division with edge cases:
         - Empty list → return empty
         - All same values → return all 1.0 (avoid division by zero)
@@ -858,7 +912,7 @@ class RagEngine:
         """
         if not values:
             return []
-        
+
         # ✅ Filter out NaN/Inf values để tránh lỗi tính toán
         clean_values = []
         for v in values:
@@ -870,38 +924,50 @@ class RagEngine:
                     clean_values.append(0.0)  # Replace NaN/Inf with 0
             except (TypeError, ValueError):
                 clean_values.append(0.0)  # Fallback for conversion errors
-        
+
         if not clean_values:
             return [0.0 for _ in values]
-        
+
         vmin = min(clean_values)
         vmax = max(clean_values)
-        
+
         # ✅ Check for division by zero (all values same)
         if abs(vmax - vmin) <= 1e-12:
             return [1.0 for _ in values]
-        
+
         # ✅ Safe normalization
         return [(v - vmin) / (vmax - vmin) for v in clean_values]
 
     @staticmethod
-    def _make_key(doc: str, meta: Dict[str, Any]) -> Tuple[str, Any, Any]:
+    def _make_key(doc: str, meta: dict[str, Any]) -> tuple[str, Any, Any]:
         return (meta.get("source", ""), meta.get("chunk", -1), len(doc))
 
-    def retrieve_hybrid(self, query: str, top_k: int = 5, bm25_weight: float = 0.5, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None, *, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
+    def retrieve_hybrid(
+        self,
+        query: str,
+        top_k: int = 5,
+        bm25_weight: float = 0.5,
+        rrf_enable: bool | None = None,
+        rrf_k: int | None = None,
+        *,
+        languages: list[str] | None = None,
+        versions: list[str] | None = None,
+    ) -> dict[str, Any]:
         # Fetch candidates
         vec = self.retrieve(query, top_k=top_k, languages=languages, versions=versions)
-        bm = self.retrieve_bm25(query, top_k=max(top_k, 10), languages=languages, versions=versions)  # get a bit more for better merge
+        bm = self.retrieve_bm25(
+            query, top_k=max(top_k, 10), languages=languages, versions=versions
+        )  # get a bit more for better merge
 
-        v_docs: List[str] = vec.get("documents", [])
-        v_metas: List[Dict[str, Any]] = vec.get("metadatas", [])
-        v_dists: List[float] = vec.get("distances", [])
+        v_docs: list[str] = vec.get("documents", [])
+        v_metas: list[dict[str, Any]] = vec.get("metadatas", [])
+        v_dists: list[float] = vec.get("distances", [])
         v_sims = self._to_similarity(v_dists)
         v_norm = self._min_max(v_sims)
 
-        b_docs: List[str] = bm.get("documents", [])
-        b_metas: List[Dict[str, Any]] = bm.get("metadatas", [])
-        b_scores: List[float] = bm.get("scores", [])
+        b_docs: list[str] = bm.get("documents", [])
+        b_metas: list[dict[str, Any]] = bm.get("metadatas", [])
+        b_scores: list[float] = bm.get("scores", [])
         b_norm = self._min_max(b_scores)
 
         # Decide fusion strategy
@@ -910,11 +976,11 @@ class RagEngine:
 
         if use_rrf:
             # Build ranks
-            ranks_vec: Dict[Tuple[str, Any, Any], int] = {}
-            for idx, (doc, meta) in enumerate(zip(v_docs, v_metas), start=1):
+            ranks_vec: dict[tuple[str, Any, Any], int] = {}
+            for idx, (doc, meta) in enumerate(zip(v_docs, v_metas, strict=False), start=1):
                 ranks_vec[self._make_key(doc, meta)] = idx
-            ranks_bm: Dict[Tuple[str, Any, Any], int] = {}
-            for idx, (doc, meta) in enumerate(zip(b_docs, b_metas), start=1):
+            ranks_bm: dict[tuple[str, Any, Any], int] = {}
+            for idx, (doc, meta) in enumerate(zip(b_docs, b_metas, strict=False), start=1):
                 ranks_bm[self._make_key(doc, meta)] = idx
             # Union keys
             keys = set(ranks_vec.keys()) | set(ranks_bm.keys())
@@ -943,11 +1009,11 @@ class RagEngine:
             return {"documents": docs, "metadatas": metas}
         else:
             # Weighted normalization merge (legacy)
-            cand: Dict[Tuple[str, Any, Any], Dict[str, Any]] = {}
-            for doc, meta, s in zip(v_docs, v_metas, v_norm):
+            cand: dict[tuple[str, Any, Any], dict[str, Any]] = {}
+            for doc, meta, s in zip(v_docs, v_metas, v_norm, strict=False):
                 key = self._make_key(doc, meta)
                 cand[key] = {"doc": doc, "meta": meta, "v": s, "b": 0.0}
-            for doc, meta, s in zip(b_docs, b_metas, b_norm):
+            for doc, meta, s in zip(b_docs, b_metas, b_norm, strict=False):
                 key = self._make_key(doc, meta)
                 if key in cand:
                     cand[key]["b"] = s
@@ -964,7 +1030,7 @@ class RagEngine:
             return {"documents": docs, "metadatas": metas}
 
     # ===== Prompt & Answer =====
-    def build_prompt(self, question: str, context_docs: List[str]) -> str:
+    def build_prompt(self, question: str, context_docs: list[str]) -> str:
         context_block = "\n\n".join([f"[CTX {i+1}]\n{c}" for i, c in enumerate(context_docs)])
         # Hướng dẫn rõ ràng về citations [n] khớp với [CTX n]
         system = (
@@ -990,11 +1056,17 @@ class RagEngine:
         if self._embed_rr is None:
             self._embed_rr = SimpleEmbedReranker(self.ollama.embed)
 
-    def _apply_rerank(self, question: str, docs: List[str], metas: List[Dict[str, Any]], top_k: int,
-                       rr_provider: Optional[str] = None,
-                       rr_max_k: Optional[int] = None,
-                       rr_batch_size: Optional[int] = None,
-                       rr_num_threads: Optional[int] = None) -> Tuple[List[str], List[Dict[str, Any]]]:
+    def _apply_rerank(
+        self,
+        question: str,
+        docs: list[str],
+        metas: list[dict[str, Any]],
+        top_k: int,
+        rr_provider: str | None = None,
+        rr_max_k: int | None = None,
+        rr_batch_size: int | None = None,
+        rr_num_threads: int | None = None,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
         # Giới hạn số lượng doc cần rerank (tiết kiệm chi phí)
         maxk = int(rr_max_k) if rr_max_k is not None else len(docs)
         if maxk <= 0:
@@ -1020,7 +1092,9 @@ class RagEngine:
 
         if use_bge and self._bge_rr:
             try:
-                bs = int(rr_batch_size) if rr_batch_size else 32  # Increased from 16 to 32 for better throughput
+                bs = (
+                    int(rr_batch_size) if rr_batch_size else 32
+                )  # Increased from 16 to 32 for better throughput
                 return self._bge_rr.rerank(question, docs_in, metas_in, top_k, batch_size=bs)
             except Exception:
                 pass
@@ -1028,7 +1102,7 @@ class RagEngine:
         assert self._embed_rr is not None
         return self._embed_rr.rerank(question, docs_in, metas_in, top_k)
 
-    def _get_llm(self, provider: Optional[str] = None):
+    def _get_llm(self, provider: str | None = None):
         name = (provider or self.default_provider or "ollama").lower()
         if name == "openai":
             if self._openai is None:
@@ -1039,20 +1113,24 @@ class RagEngine:
             return self._openai or self.ollama
         return self.ollama
 
-    def _gen_cache_key(self, prompt: str, provider: Optional[str]) -> str:
+    def _gen_cache_key(self, prompt: str, provider: str | None) -> str:
         prov = (provider or self.default_provider or "ollama").lower()
-        seed = json.dumps({
-            "prov": prov,
-            "stamp": getattr(self, "_corpus_stamp", "0"),
-            "prompt": prompt,
-            "model": os.getenv("LLM_MODEL", "llama3.1:8b"),
-        }, ensure_ascii=False, sort_keys=True)
+        seed = json.dumps(
+            {
+                "prov": prov,
+                "stamp": getattr(self, "_corpus_stamp", "0"),
+                "prompt": prompt,
+                "model": os.getenv("LLM_MODEL", "llama3.1:8b"),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
         try:
             return hashlib.sha256(seed.encode("utf-8")).hexdigest()
         except Exception:
             return str(abs(hash(seed)))
 
-    def generate_text(self, prompt: str, provider: Optional[str] = None) -> str:
+    def generate_text(self, prompt: str, provider: str | None = None) -> str:
         # Cache layer
         key = self._gen_cache_key(prompt, provider)
         cached = self.gen_cache.get(key)
@@ -1067,22 +1145,24 @@ class RagEngine:
             pass
         return out
 
-    def generate_stream(self, prompt: str, provider: Optional[str] = None):
+    def generate_stream(self, prompt: str, provider: str | None = None):
         # If cached, stream from cache to preserve API contract
         key = self._gen_cache_key(prompt, provider)
         cached = self.gen_cache.get(key)
         if cached is not None and cached.strip():
             chunk = 1024
+
             def _gen():
                 s = cached
                 for i in range(0, len(s), chunk):
-                    yield s[i:i+chunk]
+                    yield s[i : i + chunk]
+
             return _gen()
         llm = self._get_llm(provider)
         return llm.generate_stream(prompt)
 
     # ===== Rewrite & Aggregate Retrieval =====
-    def _rewrite_queries(self, question: str, n: int = 2, provider: Optional[str] = None) -> List[str]:
+    def _rewrite_queries(self, question: str, n: int = 2, provider: str | None = None) -> list[str]:
         n = max(1, min(int(n or 1), 5))
         sys = (
             "Bạn là công cụ rewrite truy vấn. Trả về MẢNG JSON gồm vài biến thể truy vấn ngắn gọn (tiếng Việt), "
@@ -1102,7 +1182,7 @@ class RagEngine:
             start = s.find('[')
             end = s.rfind(']')
             if start != -1 and end != -1 and end > start:
-                arr_txt = s[start:end+1]
+                arr_txt = s[start : end + 1]
                 data = json.loads(arr_txt)
                 outs = [str(x) for x in data if isinstance(x, (str, int, float))]
                 outs = [o for o in outs if o.strip()]
@@ -1118,16 +1198,16 @@ class RagEngine:
         top_k: int = 5,
         method: str = "vector",
         bm25_weight: float = 0.5,
-        rrf_enable: Optional[bool] = None,
-        rrf_k: Optional[int] = None,
+        rrf_enable: bool | None = None,
+        rrf_k: int | None = None,
         rewrite_enable: bool = False,
         rewrite_n: int = 2,
-        provider: Optional[str] = None,
-        languages: Optional[List[str]] = None,
-        versions: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        provider: str | None = None,
+        languages: list[str] | None = None,
+        versions: list[str] | None = None,
+    ) -> dict[str, Any]:
         method = (method or "vector").lower()
-        queries: List[str] = [question]
+        queries: list[str] = [question]
         if rewrite_enable:
             try:
                 rewrites = self._rewrite_queries(question, n=rewrite_n, provider=provider)
@@ -1137,12 +1217,20 @@ class RagEngine:
             except Exception:
                 pass
         # Thu thập kết quả cho từng query
-        per_query: List[Tuple[List[str], List[Dict[str, Any]]]] = []
+        per_query: list[tuple[list[str], list[dict[str, Any]]]] = []
         for q in queries:
             if method == "bm25":
                 r = self.retrieve_bm25(q, top_k=top_k, languages=languages, versions=versions)
             elif method == "hybrid":
-                r = self.retrieve_hybrid(q, top_k=top_k, bm25_weight=bm25_weight, rrf_enable=rrf_enable, rrf_k=rrf_k, languages=languages, versions=versions)
+                r = self.retrieve_hybrid(
+                    q,
+                    top_k=top_k,
+                    bm25_weight=bm25_weight,
+                    rrf_enable=rrf_enable,
+                    rrf_k=rrf_k,
+                    languages=languages,
+                    versions=versions,
+                )
             else:
                 r = self.retrieve(q, top_k=top_k, languages=languages, versions=versions)
             per_query.append((r.get("documents", []), r.get("metadatas", [])))
@@ -1151,9 +1239,9 @@ class RagEngine:
             docs, metas = per_query[0]
             return {"documents": docs[:top_k], "metadatas": metas[:top_k]}
         rrf_k_val = RRF_K_DEFAULT if rrf_k is None else int(rrf_k)
-        score_map: Dict[Tuple[str, Any, Any], Tuple[float, str, Dict[str, Any]]] = {}
+        score_map: dict[tuple[str, Any, Any], tuple[float, str, dict[str, Any]]] = {}
         for docs, metas in per_query:
-            for idx, (d, m) in enumerate(zip(docs, metas), start=1):
+            for idx, (d, m) in enumerate(zip(docs, metas, strict=False), start=1):
                 key = self._make_key(d, m)
                 inc = 1.0 / (rrf_k_val + idx)
                 if key in score_map:
@@ -1166,7 +1254,26 @@ class RagEngine:
         out_metas = [m for _, _, m in combined[:top_k]]
         return {"documents": out_docs, "metadatas": out_metas}
 
-    def answer(self, question: str, top_k: int = 5, method: str = "vector", bm25_weight: float = 0.5, rerank_enable: bool = False, rerank_top_n: int = 10, provider: Optional[str] = None, rrf_enable: Optional[bool] = None, rrf_k: Optional[int] = None, rewrite_enable: bool = False, rewrite_n: int = 2, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None, rr_provider: Optional[str] = None, rr_max_k: Optional[int] = None, rr_batch_size: Optional[int] = None, rr_num_threads: Optional[int] = None) -> Dict[str, Any]:
+    def answer(
+        self,
+        question: str,
+        top_k: int = 5,
+        method: str = "vector",
+        bm25_weight: float = 0.5,
+        rerank_enable: bool = False,
+        rerank_top_n: int = 10,
+        provider: str | None = None,
+        rrf_enable: bool | None = None,
+        rrf_k: int | None = None,
+        rewrite_enable: bool = False,
+        rewrite_n: int = 2,
+        languages: list[str] | None = None,
+        versions: list[str] | None = None,
+        rr_provider: str | None = None,
+        rr_max_k: int | None = None,
+        rr_batch_size: int | None = None,
+        rr_num_threads: int | None = None,
+    ) -> dict[str, Any]:
         method = (method or "vector").lower()
         base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
         retrieved = self.retrieve_aggregate(
@@ -1185,7 +1292,16 @@ class RagEngine:
         docs = retrieved.get("documents", [])
         metas = retrieved.get("metadatas", [])
         if rerank_enable and docs:
-            docs, metas = self._apply_rerank(question, docs, metas, top_k, rr_provider=rr_provider, rr_max_k=rr_max_k, rr_batch_size=rr_batch_size, rr_num_threads=rr_num_threads)
+            docs, metas = self._apply_rerank(
+                question,
+                docs,
+                metas,
+                top_k,
+                rr_provider=rr_provider,
+                rr_max_k=rr_max_k,
+                rr_batch_size=rr_batch_size,
+                rr_num_threads=rr_num_threads,
+            )
         else:
             docs = docs[:top_k]
             metas = metas[:top_k]
@@ -1202,7 +1318,7 @@ class RagEngine:
         }
 
     # ===== Multi-hop =====
-    def _decompose(self, question: str, fanout: int = 2) -> List[str]:
+    def _decompose(self, question: str, fanout: int = 2) -> list[str]:
         """Dùng LLM để đề xuất một số câu hỏi con ngắn gọn (JSON array).
         An toàn: ép model phải trả về JSON duy nhất; nếu parse thất bại, fallback 1 subquestion = original.
         """
@@ -1222,7 +1338,7 @@ class RagEngine:
             start = raw.find('[')
             end = raw.rfind(']')
             if start != -1 and end != -1 and end > start:
-                arr_txt = raw[start:end+1]
+                arr_txt = raw[start : end + 1]
                 data = json.loads(arr_txt)
                 subqs = [str(x) for x in data if isinstance(x, (str, int, float))]
                 subqs = [s for s in subqs if s.strip()]
@@ -1244,13 +1360,13 @@ class RagEngine:
         rerank_enable: bool = False,
         rerank_top_n: int = 10,
         skip_answer: bool = False,
-        rrf_enable: Optional[bool] = None,
-        rrf_k: Optional[int] = None,
-        fanout_first_hop: Optional[int] = None,
-        budget_ms: Optional[int] = None,
-        languages: Optional[List[str]] = None,
-        versions: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        rrf_enable: bool | None = None,
+        rrf_k: int | None = None,
+        fanout_first_hop: int | None = None,
+        budget_ms: int | None = None,
+        languages: list[str] | None = None,
+        versions: list[str] | None = None,
+    ) -> dict[str, Any]:
         depth = max(1, min(int(depth or 1), 3))
         fanout = max(1, min(int(fanout or 1), 3))
         if fanout_first_hop is not None:
@@ -1260,21 +1376,22 @@ class RagEngine:
                 fanout_first_hop = None
         budget_ms = int(budget_ms or 0)
         start_ms = int(time.time() * 1000)
+
         def time_left_ok() -> bool:
             if budget_ms <= 0:
                 return True
             return (int(time.time() * 1000) - start_ms) < budget_ms
 
-        agg_docs: List[str] = []
-        agg_metas: List[Dict[str, Any]] = []
+        agg_docs: list[str] = []
+        agg_metas: list[dict[str, Any]] = []
         seen_keys = set()
-        subquestions_all: List[str] = []
+        subquestions_all: list[str] = []
         cur_questions = [question]
         # Duyệt theo tầng
         for hop_idx in range(depth):
             if not time_left_ok():
                 break
-            next_questions: List[str] = []
+            next_questions: list[str] = []
             # Chọn fanout cho hop này
             this_fanout = fanout_first_hop if (hop_idx == 0 and fanout_first_hop) else fanout
             # Decompose mỗi câu hỏi hiện tại
@@ -1293,14 +1410,26 @@ class RagEngine:
                     break
                 base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
                 if method == "bm25":
-                    retrieved = self.retrieve_bm25(sq, top_k=base_k, languages=languages, versions=versions)
+                    retrieved = self.retrieve_bm25(
+                        sq, top_k=base_k, languages=languages, versions=versions
+                    )
                 elif method == "hybrid":
-                    retrieved = self.retrieve_hybrid(sq, top_k=base_k, bm25_weight=bm25_weight, rrf_enable=rrf_enable, rrf_k=rrf_k, languages=languages, versions=versions)
+                    retrieved = self.retrieve_hybrid(
+                        sq,
+                        top_k=base_k,
+                        bm25_weight=bm25_weight,
+                        rrf_enable=rrf_enable,
+                        rrf_k=rrf_k,
+                        languages=languages,
+                        versions=versions,
+                    )
                 else:
-                    retrieved = self.retrieve(sq, top_k=base_k, languages=languages, versions=versions)
+                    retrieved = self.retrieve(
+                        sq, top_k=base_k, languages=languages, versions=versions
+                    )
                 docs = retrieved.get("documents", [])
                 metas = retrieved.get("metadatas", [])
-                for d, m in zip(docs, metas):
+                for d, m in zip(docs, metas, strict=False):
                     key = self._make_key(d, m)
                     if key in seen_keys:
                         continue
@@ -1312,11 +1441,21 @@ class RagEngine:
         if not agg_docs:
             base_k = max(top_k, rerank_top_n if rerank_enable else top_k)
             if method == "bm25":
-                retrieved = self.retrieve_bm25(question, top_k=base_k, languages=languages, versions=versions)
+                retrieved = self.retrieve_bm25(
+                    question, top_k=base_k, languages=languages, versions=versions
+                )
             elif method == "hybrid":
-                retrieved = self.retrieve_hybrid(question, top_k=base_k, bm25_weight=bm25_weight, languages=languages, versions=versions)
+                retrieved = self.retrieve_hybrid(
+                    question,
+                    top_k=base_k,
+                    bm25_weight=bm25_weight,
+                    languages=languages,
+                    versions=versions,
+                )
             else:
-                retrieved = self.retrieve(question, top_k=base_k, languages=languages, versions=versions)
+                retrieved = self.retrieve(
+                    question, top_k=base_k, languages=languages, versions=versions
+                )
             agg_docs = retrieved.get("documents", [])
             agg_metas = retrieved.get("metadatas", [])
 
@@ -1344,31 +1483,31 @@ class RagEngine:
         }
 
     # ===== Filters =====
-    def get_filters(self) -> Dict[str, List[str]]:
+    def get_filters(self) -> dict[str, list[str]]:
         """
         Get available filters với LRU caching.
-        
+
         ✅ FIX BUG #7: Dùng LRU cache với TTL để ngăn memory leak
         """
         # Cache key by collection (db)
         cache_key = f"{self.persist_dir}:{self.collection_name}"
-        
+
         # Try to get from cache
         cached = self._filters_cache.get(cache_key)
         if cached is not None:
             # Cache hit!
             return {"languages": cached[0], "versions": cached[1]}
-        
+
         # Cache miss - query database
         try:
             results = self.collection.get(include=["metadatas"])  # type: ignore[arg-type]
         except Exception:
             results = self.collection.get()
-        
-        metas: List[Dict[str, Any]] = results.get("metadatas", [])  # type: ignore[assignment]
+
+        metas: list[dict[str, Any]] = results.get("metadatas", [])  # type: ignore[assignment]
         langs_set = set()
         vers_set = set()
-        
+
         for m in metas:
             v = m.get("version")
             if isinstance(v, str) and v.strip():
@@ -1376,11 +1515,11 @@ class RagEngine:
             l = m.get("language")
             if isinstance(l, str) and l.strip():
                 langs_set.add(l.strip())
-        
+
         langs = sorted(langs_set)
         vers = sorted(vers_set)
-        
+
         # Store in LRU cache as tuple
         self._filters_cache.set(cache_key, (langs, vers))
-        
+
         return {"languages": langs, "versions": vers}

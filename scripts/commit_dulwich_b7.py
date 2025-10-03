@@ -1,5 +1,6 @@
-from dulwich import porcelain
 import sys
+
+from dulwich import porcelain
 
 msg_lines = [
     "feat(eval): offline evaluation endpoint + UI + e2e test",

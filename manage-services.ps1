@@ -34,9 +34,9 @@ function Show-Help {
 function Show-Status {
     Write-Host "📊 Service Status" -ForegroundColor Cyan
     Write-Host ""
-    
+
     $services = Get-Service -Name OllamaService, OllamaRAGBackend -ErrorAction SilentlyContinue
-    
+
     if ($services) {
         $services | Format-Table @(
             @{Label="Service"; Expression={$_.Name}},
@@ -44,10 +44,10 @@ function Show-Status {
             @{Label="Start Type"; Expression={$_.StartType}},
             @{Label="Display Name"; Expression={$_.DisplayName}}
         ) -AutoSize
-        
+
         # Check if both running
         $allRunning = ($services | Where-Object {$_.Status -ne "Running"}).Count -eq 0
-        
+
         if ($allRunning) {
             Write-Host "✅ All services running!" -ForegroundColor Green
         } else {
@@ -56,23 +56,23 @@ function Show-Status {
     } else {
         Write-Host "❌ No services found. Run install-services.ps1 first!" -ForegroundColor Red
     }
-    
+
     Write-Host ""
 }
 
 function Start-AllServices {
     Write-Host "🚀 Starting services..." -ForegroundColor Cyan
     Write-Host ""
-    
+
     try {
         Start-Service OllamaService -ErrorAction Stop
         Write-Host "  ✅ Ollama Service started" -ForegroundColor Green
-        
+
         Start-Sleep -Seconds 2
-        
+
         Start-Service OllamaRAGBackend -ErrorAction Stop
         Write-Host "  ✅ Backend Service started" -ForegroundColor Green
-        
+
         Write-Host ""
         Show-Status
     } catch {
@@ -83,14 +83,14 @@ function Start-AllServices {
 function Stop-AllServices {
     Write-Host "🛑 Stopping services..." -ForegroundColor Yellow
     Write-Host ""
-    
+
     try {
         Stop-Service OllamaRAGBackend -Force -ErrorAction Stop
         Write-Host "  ✅ Backend Service stopped" -ForegroundColor Green
-        
+
         Stop-Service OllamaService -Force -ErrorAction Stop
         Write-Host "  ✅ Ollama Service stopped" -ForegroundColor Green
-        
+
         Write-Host ""
         Show-Status
     } catch {
@@ -101,7 +101,7 @@ function Stop-AllServices {
 function Restart-AllServices {
     Write-Host "🔄 Restarting services..." -ForegroundColor Cyan
     Write-Host ""
-    
+
     Stop-AllServices
     Start-Sleep -Seconds 2
     Start-AllServices
@@ -110,26 +110,26 @@ function Restart-AllServices {
 function Show-Logs {
     Write-Host "📝 Recent Logs" -ForegroundColor Cyan
     Write-Host ""
-    
+
     $ollamaLog = "$ProjectRoot\logs\ollama.log"
     $backendLog = "$ProjectRoot\logs\backend.log"
-    
+
     if (Test-Path $ollamaLog) {
         Write-Host "🦙 Ollama Log (last 10 lines):" -ForegroundColor Yellow
         Get-Content $ollamaLog -Tail 10
         Write-Host ""
     }
-    
+
     if (Test-Path $backendLog) {
         Write-Host "🐍 Backend Log (last 10 lines):" -ForegroundColor Yellow
         Get-Content $backendLog -Tail 10
         Write-Host ""
     }
-    
+
     if (-not (Test-Path $ollamaLog) -and -not (Test-Path $backendLog)) {
         Write-Host "ℹ️  No logs found yet" -ForegroundColor Gray
     }
-    
+
     Write-Host "💡 To tail logs in real-time:" -ForegroundColor Cyan
     Write-Host "  Get-Content $backendLog -Tail 50 -Wait" -ForegroundColor White
     Write-Host ""
@@ -138,7 +138,7 @@ function Show-Logs {
 function Check-Health {
     Write-Host "🏥 Health Check" -ForegroundColor Cyan
     Write-Host ""
-    
+
     # Check Ollama
     try {
         Write-Host "  Checking Ollama..." -ForegroundColor Yellow
@@ -147,7 +147,7 @@ function Check-Health {
     } catch {
         Write-Host "  ❌ Ollama: Not responding" -ForegroundColor Red
     }
-    
+
     # Check Backend
     try {
         Write-Host "  Checking Backend..." -ForegroundColor Yellow
@@ -156,7 +156,7 @@ function Check-Health {
     } catch {
         Write-Host "  ❌ Backend: Not responding" -ForegroundColor Red
     }
-    
+
     Write-Host ""
     Write-Host "📡 Access Points:" -ForegroundColor Cyan
     Write-Host "  Local:  http://localhost:8000" -ForegroundColor White

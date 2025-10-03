@@ -7,7 +7,7 @@
 - **uninstall-services.ps1** - Safe removal of services
 - **manage-services.ps1** - Easy service management commands
 
-### 2. Service Management Commands  
+### 2. Service Management Commands
 - **INSTALL_COMMAND.txt** - Copy-paste commands for manual installation
 
 ### 3. Tools Installed
@@ -97,12 +97,12 @@ Get-Content logs\ollama.log -Tail 20
 
 ## 🎯 Benefits of Windows Services
 
-✅ **Auto-Start on Boot** - Services start automatically with Windows  
-✅ **Runs in Background** - No PowerShell windows needed  
-✅ **System Integration** - Managed via Windows Services console  
-✅ **Auto-Restart** - Services restart on failure (5 second delay)  
-✅ **Dependency Management** - Backend waits for Ollama to start  
-✅ **Log Rotation** - Automatic log rotation at 1MB  
+✅ **Auto-Start on Boot** - Services start automatically with Windows
+✅ **Runs in Background** - No PowerShell windows needed
+✅ **System Integration** - Managed via Windows Services console
+✅ **Auto-Restart** - Services restart on failure (5 second delay)
+✅ **Dependency Management** - Backend waits for Ollama to start
+✅ **Log Rotation** - Automatic log rotation at 1MB
 
 ---
 
@@ -156,7 +156,7 @@ All logs are stored in: `C:\Users\pc\Downloads\ollama-rag\logs\`
 
 - `ollama.log` - Ollama service output
 - `ollama_error.log` - Ollama errors
-- `backend.log` - Backend API output  
+- `backend.log` - Backend API output
 - `backend_error.log` - Backend errors
 
 Logs auto-rotate when they reach 1MB.

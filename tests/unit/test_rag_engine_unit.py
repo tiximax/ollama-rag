@@ -1,16 +1,8 @@
-import os
-import io
-import tempfile
-from typing import List, Dict, Any
+from typing import Any
 
 import pytest
 
-from app.rag_engine import (
-    chunk_text,
-    extract_text_from_docx,
-    extract_text_from_pdf,
-    RagEngine,
-)
+from app.rag_engine import RagEngine, chunk_text, extract_text_from_docx, extract_text_from_pdf
 
 
 def test_chunk_text_basic_overlap():
@@ -64,20 +56,34 @@ class DummyEngine(RagEngine):
         self.persist_root = "."
         self.db_name = "default"
 
-    def retrieve(self, query: str, top_k: int = 5, *, languages=None, versions=None) -> Dict[str, Any]:
+    def retrieve(
+        self, query: str, top_k: int = 5, *, languages=None, versions=None
+    ) -> dict[str, Any]:
         # Return deterministic vector result: v_docs first
         docs = [f"V-{query}-A", f"V-{query}-B", f"V-{query}-C"][:top_k]
         metas = [{"source": f"s-{i}", "chunk": i} for i, _ in enumerate(docs)]
         distances = [0.1, 0.2, 0.3][: len(docs)]
         return {"documents": docs, "metadatas": metas, "distances": distances}
 
-    def retrieve_bm25(self, query: str, top_k: int = 5, *, languages=None, versions=None) -> Dict[str, Any]:
+    def retrieve_bm25(
+        self, query: str, top_k: int = 5, *, languages=None, versions=None
+    ) -> dict[str, Any]:
         docs = [f"B-{query}-X", f"B-{query}-Y", f"B-{query}-Z"][:top_k]
         metas = [{"source": f"b-{i}", "chunk": i} for i, _ in enumerate(docs)]
         scores = [3.0, 2.0, 1.0][: len(docs)]
         return {"documents": docs, "metadatas": metas, "scores": scores}
 
-    def retrieve_hybrid(self, query: str, top_k: int = 5, bm25_weight: float = 0.5, rrf_enable=None, rrf_k=None, *, languages=None, versions=None) -> Dict[str, Any]:
+    def retrieve_hybrid(
+        self,
+        query: str,
+        top_k: int = 5,
+        bm25_weight: float = 0.5,
+        rrf_enable=None,
+        rrf_k=None,
+        *,
+        languages=None,
+        versions=None,
+    ) -> dict[str, Any]:
         # Simple mix: interleave V- and B- prefixes
         v = self.retrieve(query, top_k=top_k)
         b = self.retrieve_bm25(query, top_k=top_k)
@@ -109,7 +115,7 @@ def test_rerank_fallback_embed_monkeypatch(monkeypatch):
     # Monkeypatch embedder to produce similarity that ranks doc2 highest
     calls = {"count": 0}
 
-    def fake_embed(texts: List[str]) -> List[List[float]]:
+    def fake_embed(texts: list[str]) -> list[list[float]]:
         # first is query, then docs; craft cosine similarities:
         # q=[1,0], d1=[0,1], d2=[1,0] -> cosine(q,d2)=1.0 > cosine(q,d1)=0.0
         out = []

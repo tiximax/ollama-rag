@@ -1,8 +1,9 @@
-import os
 import json
+import os
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional, List
+from typing import Any
+
 
 class ExperimentLogger:
     """JSONL logger theo DB, xoay file theo ngày.
@@ -28,17 +29,17 @@ class ExperimentLogger:
         p = self._settings_path(db)
         try:
             if os.path.exists(p):
-                with open(p, "r", encoding="utf-8") as f:
+                with open(p, encoding="utf-8") as f:
                     data = json.load(f)
                 return bool(data.get("enabled", False))
         except Exception:
             pass
         return False
 
-    def info(self, db: str) -> Dict[str, Any]:
+    def info(self, db: str) -> dict[str, Any]:
         return {"db": db, "enabled": self._is_enabled(db)}
 
-    def enable(self, db: str, enabled: bool) -> Dict[str, Any]:
+    def enable(self, db: str, enabled: bool) -> dict[str, Any]:
         p = self._settings_path(db)
         try:
             with open(p, "w", encoding="utf-8") as f:
@@ -51,7 +52,7 @@ class ExperimentLogger:
         day = datetime.utcnow().strftime("%Y%m%d")
         return os.path.join(self._log_dir(db), f"exp-{day}.jsonl")
 
-    def log(self, db: str, event: Dict[str, Any]) -> None:
+    def log(self, db: str, event: dict[str, Any]) -> None:
         if not self._is_enabled(db):
             return
         path = self._log_path_for_today(db)
@@ -64,7 +65,7 @@ class ExperimentLogger:
         except Exception:
             pass
 
-    def export(self, db: str, since: Optional[str] = None, until: Optional[str] = None) -> str:
+    def export(self, db: str, since: str | None = None, until: str | None = None) -> str:
         """Gom các file theo khoảng ngày [since, until] (YYYYMMDD) thành một JSONL string.
         Nếu không truyền since/until → gom toàn bộ file trong thư mục logs.
         """
@@ -83,10 +84,10 @@ class ExperimentLogger:
         except Exception:
             pass
         files.sort()
-        lines: List[str] = []
+        lines: list[str] = []
         for p in files:
             try:
-                with open(p, "r", encoding="utf-8") as f:
+                with open(p, encoding="utf-8") as f:
                     for line in f:
                         if line.strip():
                             lines.append(line.rstrip("\n"))

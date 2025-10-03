@@ -1,6 +1,6 @@
 # 📝 TASKS CHI TIẾT - OLLAMA RAG IMPROVEMENTS
 
-**Generated:** 2025-10-01  
+**Generated:** 2025-10-01
 **Status Tracking:** [ ] TODO | [🔄] IN PROGRESS | [✅] DONE
 
 ---
@@ -8,8 +8,8 @@
 ## 🚨 PHASE 1: CRITICAL FIXES (Week 1-2)
 
 ### Task 1.1: Type Safety & Input Validation
-**Priority:** 🔥🔥🔥 CRITICAL  
-**Estimated Time:** 2-3 days  
+**Priority:** 🔥🔥🔥 CRITICAL
+**Estimated Time:** 2-3 days
 **Difficulty:** Medium
 
 #### Subtasks:
@@ -18,13 +18,13 @@
   # Tạo file mới
   touch app/validators.py
   ```
-  
+
 - [ ] **1.1.2** Implement path validation
   ```python
   # app/validators.py
   from pathlib import Path
   from typing import List
-  
+
   def validate_safe_path(path: str, base_dir: Path = Path.cwd()) -> Path:
       """Validate path không escape khỏi base_dir."""
       resolved = Path(path).resolve()
@@ -37,19 +37,19 @@
   ```python
   # app/main.py
   from pydantic import field_validator
-  
+
   class IngestRequest(BaseModel):
       paths: List[str] = ["data/docs"]
       db: Optional[str] = None
       version: Optional[str] = None
-      
+
       @field_validator('paths')
       def validate_paths(cls, v):
           from .validators import validate_safe_path
           for p in v:
               validate_safe_path(p)
           return v
-      
+
       @field_validator('db')
       def validate_db_name(cls, v):
           if v and not RagEngine._valid_db_name(v):
@@ -63,18 +63,18 @@
   from fastapi.middleware.trustedhost import TrustedHostMiddleware
   from fastapi import Request
   from starlette.middleware.base import BaseHTTPMiddleware
-  
+
   class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
       def __init__(self, app, max_size: int = 10 * 1024 * 1024):  # 10MB
           super().__init__(app)
           self.max_size = max_size
-      
+
       async def dispatch(self, request: Request, call_next):
           if request.headers.get('content-length'):
               if int(request.headers['content-length']) > self.max_size:
                   return Response(status_code=413, content="Request too large")
           return await call_next(request)
-  
+
   app.add_middleware(RequestSizeLimitMiddleware)
   ```
 
@@ -83,7 +83,7 @@
   # tests/unit/test_validators.py (NEW)
   import pytest
   from app.validators import validate_safe_path
-  
+
   def test_path_traversal_blocked():
       with pytest.raises(ValueError):
           validate_safe_path("../../../etc/passwd")
@@ -102,8 +102,8 @@ pytest tests/unit/test_validators.py -v
 ---
 
 ### Task 1.2: Fix Resource Leaks
-**Priority:** 🔥🔥 HIGH  
-**Estimated Time:** 1-2 days  
+**Priority:** 🔥🔥 HIGH
+**Estimated Time:** 1-2 days
 **Difficulty:** Medium
 
 #### Subtasks:
@@ -111,7 +111,7 @@ pytest tests/unit/test_validators.py -v
   ```python
   # app/rag_engine.py
   import contextlib
-  
+
   @contextlib.contextmanager
   def _faiss_connection(self):
       """Context manager cho FAISS map connection."""
@@ -147,7 +147,7 @@ pytest tests/unit/test_validators.py -v
       # Clear caches
       self._bm25 = None
       self._filters_cache.clear()
-  
+
   def __del__(self):
       """Destructor."""
       self.cleanup()
@@ -180,8 +180,8 @@ python -m memory_profiler scripts/memory_test.py
 ---
 
 ### Task 1.3: Concurrency Safety
-**Priority:** 🔥🔥 HIGH  
-**Estimated Time:** 2 days  
+**Priority:** 🔥🔥 HIGH
+**Estimated Time:** 2 days
 **Difficulty:** Medium-Hard
 
 #### Subtasks:
@@ -196,20 +196,20 @@ python -m memory_profiler scripts/memory_test.py
   ```python
   # app/rag_engine.py
   import threading
-  
+
   class RagEngine:
       def __init__(self, ...):
           # ... existing code
           self._bm25_lock = threading.RLock()  # Reentrant lock
-      
+
       def _build_bm25_from_collection(self):
           with self._bm25_lock:
               # ... existing logic
-      
+
       def retrieve_bm25(self, ...):
           if not self._ensure_bm25():
               return {"documents": [], "metadatas": [], "scores": []}
-          
+
           with self._bm25_lock:
               # ... existing logic
   ```
@@ -218,16 +218,16 @@ python -m memory_profiler scripts/memory_test.py
   ```python
   # app/chat_store.py
   from filelock import FileLock
-  
+
   class ChatStore:
       def _lock_path(self, db: str) -> str:
           return os.path.join(self._db_dir(db), ".lock")
-      
+
       def append_pair(self, db: str, chat_id: str, ...):
           lock_file = self._lock_path(db)
           with FileLock(lock_file, timeout=5):
               # ... existing write logic
-      
+
       def delete(self, db: str, chat_id: str):
           lock_file = self._lock_path(db)
           with FileLock(lock_file, timeout=5):
@@ -240,7 +240,7 @@ python -m memory_profiler scripts/memory_test.py
   def __init__(self, ...):
       # ...
       self._filters_lock = threading.Lock()
-  
+
   def get_filters(self):
       with self._filters_lock:
           # ... existing logic
@@ -251,7 +251,7 @@ python -m memory_profiler scripts/memory_test.py
   // tests/e2e/concurrency.spec.js (NEW)
   test('concurrent queries should not corrupt data', async ({ page }) => {
       // Gửi 10 requests đồng thời
-      const promises = Array(10).fill(0).map(() => 
+      const promises = Array(10).fill(0).map(() =>
           fetch('http://localhost:8000/api/query', {
               method: 'POST',
               body: JSON.stringify({query: 'test', k: 5})
@@ -279,8 +279,8 @@ npm run test:e2e -- concurrency.spec.js
 ## ⚡ PHASE 2: IMPORTANT IMPROVEMENTS (Week 3-4)
 
 ### Task 2.1: Error Handling Standards
-**Priority:** 🟡 MEDIUM  
-**Estimated Time:** 3 days  
+**Priority:** 🟡 MEDIUM
+**Estimated Time:** 3 days
 **Difficulty:** Medium
 
 #### Subtasks:
@@ -288,23 +288,23 @@ npm run test:e2e -- concurrency.spec.js
   ```python
   # app/exceptions.py (NEW)
   """Custom exceptions cho Ollama RAG."""
-  
+
   class OllamaRAGException(Exception):
       """Base exception."""
       pass
-  
+
   class IngestError(OllamaRAGException):
       """Lỗi khi ingest tài liệu."""
       pass
-  
+
   class RetrievalError(OllamaRAGException):
       """Lỗi khi retrieve."""
       pass
-  
+
   class GenerationError(OllamaRAGException):
       """Lỗi khi generate answer."""
       pass
-  
+
   class ConfigError(OllamaRAGException):
       """Lỗi config."""
       pass
@@ -318,7 +318,7 @@ npm run test:e2e -- concurrency.spec.js
       text = extract_text_from_pdf(path)
   except Exception:
       return ""
-  
+
   # NEW:
   from .exceptions import IngestError
   try:
@@ -337,11 +337,11 @@ npm run test:e2e -- concurrency.spec.js
   pip install structlog
   echo "structlog>=23.1" >> requirements.txt
   ```
-  
+
   ```python
   # app/logging_config.py (NEW)
   import structlog
-  
+
   def setup_logging():
       structlog.configure(
           processors=[
@@ -356,7 +356,7 @@ npm run test:e2e -- concurrency.spec.js
           context_class=dict,
           logger_factory=structlog.stdlib.LoggerFactory(),
       )
-  
+
   logger = structlog.get_logger()
   ```
 
@@ -364,7 +364,7 @@ npm run test:e2e -- concurrency.spec.js
   ```python
   # app/main.py
   from fastapi.responses import JSONResponse
-  
+
   @app.exception_handler(OllamaRAGException)
   async def rag_exception_handler(request, exc):
       return JSONResponse(
@@ -393,8 +393,8 @@ npm run test:e2e -- concurrency.spec.js
 ---
 
 ### Task 2.2: Performance Optimization
-**Priority:** 🟡 MEDIUM  
-**Estimated Time:** 3 days  
+**Priority:** 🟡 MEDIUM
+**Estimated Time:** 3 days
 **Difficulty:** Medium
 
 #### Subtasks:
@@ -402,19 +402,19 @@ npm run test:e2e -- concurrency.spec.js
   ```python
   # app/rag_engine.py
   from datetime import datetime, timedelta
-  
+
   def __init__(self, ...):
       # ...
       self._filters_cache_data = None
       self._filters_cache_time = None
       self._filters_cache_ttl = 300  # 5 mins
-  
+
   def get_filters(self):
       now = datetime.now()
-      if (self._filters_cache_data and self._filters_cache_time and 
+      if (self._filters_cache_data and self._filters_cache_time and
           (now - self._filters_cache_time).total_seconds() < self._filters_cache_ttl):
           return self._filters_cache_data
-      
+
       # Rebuild...
       with self._filters_lock:
           result = self._build_filters()
@@ -441,8 +441,8 @@ npm run test:e2e -- concurrency.spec.js
   # app/main.py - NEW endpoint
   @app.get("/api/chats/paginated")
   def api_chats_paginated(
-      db: Optional[str] = None, 
-      page: int = 0, 
+      db: Optional[str] = None,
+      page: int = 0,
       size: int = 20
   ):
       # Implement pagination logic
@@ -463,8 +463,8 @@ pytest tests/perf/ --benchmark-only
 ---
 
 ### Task 2.3: Security Hardening
-**Priority:** 🟡 MEDIUM-HIGH  
-**Estimated Time:** 2 days  
+**Priority:** 🟡 MEDIUM-HIGH
+**Estimated Time:** 2 days
 **Difficulty:** Medium
 
 #### Subtasks:
@@ -473,17 +473,17 @@ pytest tests/perf/ --benchmark-only
   pip install slowapi
   echo "slowapi>=0.1.8" >> requirements.txt
   ```
-  
+
   ```python
   # app/main.py
   from slowapi import Limiter, _rate_limit_exceeded_handler
   from slowapi.util import get_remote_address
   from slowapi.errors import RateLimitExceeded
-  
+
   limiter = Limiter(key_func=get_remote_address)
   app.state.limiter = limiter
   app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-  
+
   @app.post("/api/query")
   @limiter.limit("30/minute")  # 30 queries per minute
   async def api_query(req: QueryRequest, request: Request):
@@ -500,7 +500,7 @@ pytest tests/perf/ --benchmark-only
           if key in event_dict:
               event_dict[key] = '***REDACTED***'
       return event_dict
-  
+
   # Add to processors
   structlog.processors.add_log_level,
   sanitize_log,  # <- Add this
@@ -510,18 +510,18 @@ pytest tests/perf/ --benchmark-only
   ```bash
   pip install python-magic
   ```
-  
+
   ```python
   # app/main.py - trong api_upload
   import magic
-  
+
   async def api_upload(...):
       for f in files:
           data = await f.read()
           mime = magic.from_buffer(data, mime=True)
-          
+
           # Validate MIME type
-          allowed_mimes = ['text/plain', 'application/pdf', 
+          allowed_mimes = ['text/plain', 'application/pdf',
                           'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
           if mime not in allowed_mimes:
               continue  # Skip invalid files
@@ -531,7 +531,7 @@ pytest tests/perf/ --benchmark-only
   ```python
   # app/main.py
   from fastapi.middleware.cors import CORSMiddleware
-  
+
   app.add_middleware(
       CORSMiddleware,
       allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:8000").split(","),
@@ -545,7 +545,7 @@ pytest tests/perf/ --benchmark-only
   ```python
   # app/main.py
   from starlette.middleware.base import BaseHTTPMiddleware
-  
+
   class SecurityHeadersMiddleware(BaseHTTPMiddleware):
       async def dispatch(self, request, call_next):
           response = await call_next(request)
@@ -554,7 +554,7 @@ pytest tests/perf/ --benchmark-only
           response.headers['X-XSS-Protection'] = '1; mode=block'
           response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
           return response
-  
+
   app.add_middleware(SecurityHeadersMiddleware)
   ```
 
@@ -575,7 +575,7 @@ pytest tests/perf/ --benchmark-only
 ## 🎨 PHASE 3: CODE QUALITY (Week 5)
 
 ### Task 3.1: Refactoring
-**Priority:** 🟢 LOW-MEDIUM  
+**Priority:** 🟢 LOW-MEDIUM
 **Estimated Time:** 4 days
 
 #### Subtasks:
@@ -585,16 +585,16 @@ pytest tests/perf/ --benchmark-only
 - [ ] **3.1.4** Type hints với mypy
 
 ### ✅ Task 3.2: Unit Tests
-**Priority:** 🟢 MEDIUM  
-**Estimated Time:** 4 days  
-**Status:** DONE ✅  
+**Priority:** 🟢 MEDIUM
+**Estimated Time:** 4 days
+**Status:** DONE ✅
 **Completed:** 2025-01-XX
 
 #### Subtasks:
 - [x] **3.2.1** Setup pytest-cov
 - [x] **3.2.2** Write unit tests cho core modules
   - Created `tests/unit/test_exceptions.py` (22 tests)
-  - Created `tests/unit/test_constants.py` (22 tests)  
+  - Created `tests/unit/test_constants.py` (22 tests)
   - Existing `tests/unit/test_validators.py` (28 tests)
 - [x] **3.2.3** Coverage report generated
   - **Total unit tests:** 72 tests, all passing ✅
@@ -610,9 +610,9 @@ pytest tests/perf/ --benchmark-only
 - All tests pass successfully
 
 ### ✅ Task 3.3: UI/UX Polish
-**Priority:** 🟢 LOW-MEDIUM  
-**Estimated Time:** 2 days  
-**Status:** DONE ✅  
+**Priority:** 🟢 LOW-MEDIUM
+**Estimated Time:** 2 days
+**Status:** DONE ✅
 **Completed:** 2025-01-XX
 
 #### Subtasks:

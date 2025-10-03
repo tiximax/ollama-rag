@@ -1,9 +1,9 @@
-import os
-import requests
 import json
+import os
 import time
-from typing import List, Optional, Iterator, Tuple
+from collections.abc import Iterator
 
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,20 +24,37 @@ OPT_NUM_GPU = os.getenv("OLLAMA_NUM_GPU")
 
 
 class OllamaClient:
-    def __init__(self, base_url: Optional[str] = None):
+    def __init__(self, base_url: str | None = None):
         self.base_url = base_url or OLLAMA_BASE_URL
         self.session = requests.Session()
 
-    def _request(self, method: str, path: str, *, json_body=None, stream: bool = False, timeout: Optional[Tuple[float, float]] = None) -> requests.Response:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body=None,
+        stream: bool = False,
+        timeout: tuple[float, float] | None = None,
+    ) -> requests.Response:
         url = f"{self.base_url}{path}"
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         to = timeout or (CONNECT_TIMEOUT, READ_TIMEOUT)
         for attempt in range(MAX_RETRIES + 1):
             try:
-                resp = self.session.request(method, url, json=json_body, stream=stream, timeout=to, headers={"Connection": "close"})
+                resp = self.session.request(
+                    method,
+                    url,
+                    json=json_body,
+                    stream=stream,
+                    timeout=to,
+                    headers={"Connection": "close"},
+                )
                 # Retry on common transient status codes
                 if resp.status_code in (429, 502, 503, 504) or 500 <= resp.status_code < 600:
-                    last_exc = requests.HTTPError(f"{resp.status_code}: transient error", response=resp)
+                    last_exc = requests.HTTPError(
+                        f"{resp.status_code}: transient error", response=resp
+                    )
                     # Drain/close response before retry
                     try:
                         resp.close()
@@ -49,7 +66,7 @@ class OllamaClient:
                 last_exc = e
                 if attempt >= MAX_RETRIES:
                     break
-                time.sleep(BACKOFF_FACTOR * (2 ** attempt))
+                time.sleep(BACKOFF_FACTOR * (2**attempt))
             except Exception as e:
                 # Don't retry on unknown fatal errors
                 last_exc = e
@@ -61,16 +78,13 @@ class OllamaClient:
     def health_check(self) -> bool:
         """Check if Ollama service is healthy."""
         try:
-            response = self.session.post(
-                f"{self.base_url}/api/tags",
-                timeout=CONNECT_TIMEOUT
-            )
+            response = self.session.post(f"{self.base_url}/api/tags", timeout=CONNECT_TIMEOUT)
             return response.status_code == 200
         except Exception:
             return False
 
-    def embed(self, texts: List[str]) -> List[List[float]]:
-        embeddings: List[List[float]] = []
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        embeddings: list[list[float]] = []
         for t in texts:
             resp = self._request(
                 "POST",
@@ -100,7 +114,7 @@ class OllamaClient:
             pass
         return opts
 
-    def generate(self, prompt: str, system: Optional[str] = None) -> str:
+    def generate(self, prompt: str, system: str | None = None) -> str:
         payload = {
             "model": LLM_MODEL,
             "prompt": prompt if system is None else f"[SYSTEM]\n{system}\n[/SYSTEM]\n{prompt}",
@@ -112,7 +126,7 @@ class OllamaClient:
         data = resp.json()
         return data.get("response", "")
 
-    def generate_stream(self, prompt: str, system: Optional[str] = None) -> Iterator[str]:
+    def generate_stream(self, prompt: str, system: str | None = None) -> Iterator[str]:
         payload = {
             "model": LLM_MODEL,
             "prompt": prompt if system is None else f"[SYSTEM]\n{system}\n[/SYSTEM]\n{prompt}",

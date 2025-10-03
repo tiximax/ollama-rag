@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Unit tests for RagEngine list_sources() and delete_sources() using a fake in-memory
 collection to avoid touching real Chroma/Ollama.
 """
 
 import unittest
+
 from app.rag_engine import RagEngine
 
 
@@ -76,11 +76,14 @@ class RagEngineSourcesTests(unittest.TestCase):
         self.engine.collection = FakeCollection(metadatas=metas, ids_map={})
         items = self.engine.list_sources()
         # Expect alphabetical order by source with counts
-        self.assertEqual(items, [
-            {"source": "a.txt", "chunks": 2},
-            {"source": "b.txt", "chunks": 2},
-            {"source": "c.txt", "chunks": 1},
-        ])
+        self.assertEqual(
+            items,
+            [
+                {"source": "a.txt", "chunks": 2},
+                {"source": "b.txt", "chunks": 2},
+                {"source": "c.txt", "chunks": 1},
+            ],
+        )
 
     def test_delete_sources_with_where_and_fallback(self):
         # Prepare metas and ids mapping per source

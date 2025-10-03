@@ -1,16 +1,95 @@
+# ============================================
+# OLLAMA RAG - PRE-COMMIT HOOKS
+# ============================================
+# Auto-run code quality & security checks
+# before each git commit.
+#
+# Setup:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Run manually:
+#   pre-commit run --all-files
+# ============================================
+
 repos:
+  # ===== Code Formatting =====
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.4
     hooks:
       - id: ruff
+        name: "🔍 Ruff Linter"
         args: ["--fix"]
       - id: ruff-format
+        name: "🎨 Ruff Format"
+
   - repo: https://github.com/psf/black
     rev: 24.8.0
     hooks:
       - id: black
+        name: "⬛ Black Formatter"
         language_version: python3
+
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:
       - id: isort
+        name: "📦 Import Sorter"
+
+  # ===== Security Checks =====
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        name: "🔒 Bandit Security Scanner"
+        args: ["-ll", "-r", "app/"]
+        exclude: tests/
+
+  # ===== Code Quality =====
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        name: "✂️ Trim Trailing Whitespace"
+      - id: end-of-file-fixer
+        name: "📤 Fix EOF"
+      - id: check-yaml
+        name: "✅ Validate YAML"
+      - id: check-json
+        name: "✅ Validate JSON"
+      - id: check-toml
+        name: "✅ Validate TOML"
+      - id: check-added-large-files
+        name: "🚨 Check Large Files"
+        args: ['--maxkb=1024']  # 1MB max
+      - id: check-merge-conflict
+        name: "⚠️ Check Merge Conflicts"
+      - id: debug-statements
+        name: "🐛 Check Debug Statements"
+      - id: mixed-line-ending
+        name: "🔄 Fix Line Endings"
+        args: ['--fix=lf']
+
+  # ===== Type Checking (Optional) =====
+  # Uncomment if you want mypy type checking
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.11.0
+  #   hooks:
+  #     - id: mypy
+  #       name: "🔍 MyPy Type Checker"
+  #       additional_dependencies: [types-all]
+  #       args: ["--ignore-missing-imports", "--no-strict-optional"]
+
+  # ===== Documentation =====
+  - repo: https://github.com/pycqa/pydocstyle
+    rev: 6.3.0
+    hooks:
+      - id: pydocstyle
+        name: "📖 Docstring Style Checker"
+        args: ["--convention=google"]
+        exclude: tests/
+
+# ===== Global Settings =====
+fail_fast: false  # Run all hooks even if one fails
+default_language_version:
+  python: python3

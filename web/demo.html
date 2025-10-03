@@ -65,7 +65,7 @@
       <button onclick="showErrorToast()">❌ Error Toast</button>
       <button onclick="showWarningToast()">⚠️ Warning Toast</button>
       <button onclick="showInfoToast()">ℹ️ Info Toast</button>
-      
+
       <ul class="feature-list" style="margin-top: 16px;">
         <li>4 types: success, error, warning, info</li>
         <li>Auto-dismiss sau 4 giây</li>
@@ -79,10 +79,10 @@
     <div class="demo-section">
       <p><strong>Inline Button Spinner:</strong></p>
       <button id="demo-btn" onclick="showButtonLoading()">Click để xem loading</button>
-      
+
       <p style="margin-top: 20px;"><strong>Full-Screen Overlay:</strong></p>
       <button onclick="showLoadingOverlay()">Show Loading Overlay</button>
-      
+
       <ul class="feature-list" style="margin-top: 16px;">
         <li>Button disabled during operation</li>
         <li>Spinner + original text</li>
@@ -99,7 +99,7 @@
         <div style="margin-top: 8px;"><span class="shortcut-key">Escape</span> - Clear results</div>
         <div style="margin-top: 8px;"><span class="shortcut-key">Ctrl/Cmd + K</span> - Focus search input</div>
       </div>
-      
+
       <p style="margin-top: 16px;">Test input (focus vào đây và nhấn Ctrl+Enter):</p>
       <input type="text" id="test-input" placeholder="Nhập text và nhấn Ctrl+Enter..." />
       <div id="shortcut-result" style="margin-top: 12px; color: #10b981;"></div>
@@ -124,10 +124,10 @@
       <p><strong>Button States:</strong></p>
       <button>Hover over me!</button>
       <button disabled>Disabled button</button>
-      
+
       <p style="margin-top: 16px;"><strong>Focus States:</strong></p>
       <input type="text" placeholder="Click to focus and see border..." />
-      
+
       <ul class="feature-list" style="margin-top: 16px;">
         <li>Hover: lift effect + shadow</li>
         <li>Active: press effect</li>
@@ -155,7 +155,7 @@
     // Toast Manager
     const ToastManager = {
       container: null,
-      
+
       init() {
         if (!this.container) {
           this.container = document.createElement('div');
@@ -163,40 +163,40 @@
           document.body.appendChild(this.container);
         }
       },
-      
+
       show(message, type = 'info', duration = 4000) {
         this.init();
-        
+
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
-        
+
         const icon = this._getIcon(type);
         const iconEl = document.createElement('span');
         iconEl.className = 'toast-icon';
         iconEl.textContent = icon;
-        
+
         const messageEl = document.createElement('div');
         messageEl.className = 'toast-message';
         messageEl.textContent = message;
-        
+
         const closeBtn = document.createElement('button');
         closeBtn.className = 'toast-close';
         closeBtn.textContent = '×';
         closeBtn.onclick = () => this.remove(toast);
-        
+
         toast.appendChild(iconEl);
         toast.appendChild(messageEl);
         toast.appendChild(closeBtn);
-        
+
         this.container.appendChild(toast);
-        
+
         if (duration > 0) {
           setTimeout(() => this.remove(toast), duration);
         }
-        
+
         return toast;
       },
-      
+
       remove(toast) {
         toast.classList.add('toast-exit');
         setTimeout(() => {
@@ -205,12 +205,12 @@
           }
         }, 300);
       },
-      
+
       success(message, duration) { return this.show(message, 'success', duration); },
       error(message, duration) { return this.show(message, 'error', duration); },
       warning(message, duration) { return this.show(message, 'warning', duration); },
       info(message, duration) { return this.show(message, 'info', duration); },
-      
+
       _getIcon(type) {
         const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
         return icons[type] || icons.info;
@@ -220,30 +220,30 @@
     // Loading Overlay
     const LoadingOverlay = {
       overlay: null,
-      
+
       show(text = 'Đang xử lý...') {
         if (!this.overlay) {
           this.overlay = document.createElement('div');
           this.overlay.className = 'loading-overlay';
-          
+
           const content = document.createElement('div');
           content.className = 'loading-content';
-          
+
           const spinner = document.createElement('div');
           spinner.className = 'loading-spinner-large';
-          
+
           const textEl = document.createElement('div');
           textEl.className = 'loading-text';
           textEl.textContent = text;
-          
+
           content.appendChild(spinner);
           content.appendChild(textEl);
           this.overlay.appendChild(content);
         }
-        
+
         document.body.appendChild(this.overlay);
       },
-      
+
       hide() {
         if (this.overlay && this.overlay.parentNode) {
           this.overlay.parentNode.removeChild(this.overlay);
@@ -273,7 +273,7 @@
       const originalText = btn.textContent;
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span> Loading...';
-      
+
       setTimeout(() => {
         btn.disabled = false;
         btn.textContent = originalText;
@@ -293,7 +293,7 @@
     document.addEventListener('keydown', (e) => {
       const testInput = document.getElementById('test-input');
       const result = document.getElementById('shortcut-result');
-      
+
       // Ctrl/Cmd + Enter
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         if (document.activeElement === testInput) {
@@ -302,13 +302,13 @@
           ToastManager.success('Query submitted: ' + testInput.value);
         }
       }
-      
+
       // Escape
       if (e.key === 'Escape') {
         result.textContent = '✅ Escape pressed! Results cleared.';
         testInput.value = '';
       }
-      
+
       // Ctrl/Cmd + K
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();

@@ -1,5 +1,6 @@
-from dulwich import porcelain
 import sys
+
+from dulwich import porcelain
 
 msg_lines = [
     "feat(citations): export citations per chat/DB (JSON/CSV/MD) + UI + e2e",

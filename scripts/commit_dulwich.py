@@ -1,6 +1,6 @@
-from dulwich import porcelain
-from dulwich.repo import Repo
 import sys
+
+from dulwich import porcelain
 
 msg_lines = [
     "feat(filters): add versioning + language filtering; API/UI integration; e2e tests",

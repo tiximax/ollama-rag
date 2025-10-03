@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 API smoke tests using FastAPI TestClient and unittest.
 Các bài test chỉ dùng các API an toàn, không gọi đến embeddings/LLM.
@@ -15,7 +14,9 @@ except Exception:
 from app.main import app
 
 
-@unittest.skipIf(TestClient is None, "httpx (and fastapi TestClient) chưa được cài — bỏ qua smoke tests")
+@unittest.skipIf(
+    TestClient is None, "httpx (and fastapi TestClient) chưa được cài — bỏ qua smoke tests"
+)
 class ApiSmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
