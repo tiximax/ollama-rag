@@ -6,9 +6,6 @@ from typing import Any
 
 # ✅ Load environment variables from .env file
 from dotenv import load_dotenv
-
-load_dotenv(override=True)  # Load .env and override values on reload
-
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -39,6 +36,9 @@ from .logging_utils import setup_secure_logging
 from .rag_engine import RagEngine
 from .semantic_cache import SemanticQueryCache
 from .validators import validate_db_name, validate_safe_path, validate_version_string
+
+# Load .env after all imports, before any os.getenv usage
+load_dotenv(override=True)  # Ensures .env is loaded for environment-based config
 
 # ✅ FIX BUG #1: Setup secure logging để tự động mask API keys
 setup_secure_logging()
@@ -193,7 +193,7 @@ metrics.set_app_info(version=APP_VERSION, db_type="chromadb")
 
 
 # ✅ Startup event - Initialize Semantic Cache 🧠
-# Last updated: 2025-10-03 15:34Z - Force reload to load .env (override=True) via dotenv
+# Last updated: 2025-10-03 15:51Z - Force reload to load .env (override=True) via dotenv
 @app.on_event("startup")
 async def startup_event():
     """Initialize application resources on startup."""

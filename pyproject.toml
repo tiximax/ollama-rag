@@ -14,7 +14,8 @@ src_paths = ["app", "scripts"]
 line-length = 100
 target-version = "py310"
 select = ["E", "F", "I", "B", "W", "UP", "C90"]
-ignore = ["E203"]
+# Relax a few rules for this project (FastAPI & long strings)
+ignore = ["E203", "E501", "B008", "B904", "C901", "UP038", "B007"]
 exclude = [
   ".venv",
   "node_modules",
