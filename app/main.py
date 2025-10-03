@@ -39,6 +39,7 @@ from .exceptions import (
 from .cors_utils import parse_cors_origins_safe
 from .logging_utils import setup_secure_logging
 from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from . import metrics
 
 # ✅ FIX BUG #1: Setup secure logging để tự động mask API keys
@@ -56,14 +57,13 @@ app = FastAPI(
 instrumentator = Instrumentator(
     should_group_status_codes=False,
     should_ignore_untemplated=True,
-    should_respect_env_var=True,
+    should_respect_env_var=False,  # Always enable
     should_instrument_requests_inprogress=True,
     excluded_handlers=["/metrics"],
-    env_var_name="ENABLE_METRICS",
     inprogress_name="http_requests_inprogress",
     inprogress_labels=True,
 )
-instrumentator.instrument(app).expose(app, endpoint="/metrics", tags=["Monitoring"])
+instrumentator.instrument(app)
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -182,13 +182,16 @@ exp_logger = ExperimentLogger(engine.persist_root)
 # ✅ Initialize application metrics 📊
 metrics.set_app_info(version=APP_VERSION, db_type="chromadb")
 
-# Phục vụ web UI
-app.mount("/static", StaticFiles(directory="web"), name="static")
-
 
 @app.get("/", tags=["Web UI"])
 def root():
     return FileResponse("web/index.html")
+
+
+@app.get("/metrics", tags=["Monitoring"])
+def get_metrics():
+    """✅ Prometheus metrics endpoint for monitoring."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/health", tags=["System"])
@@ -1606,3 +1609,6 @@ def api_delete_db(name: str):
         return {"status": "ok", "current": engine.db_name, "dbs": engine.list_dbs()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ✅ Mount static files at the end to not override API routes
+app.mount("/static", StaticFiles(directory="web"), name="static")
