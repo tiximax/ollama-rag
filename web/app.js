@@ -109,7 +109,6 @@ document.addEventListener('keydown', (e) => {
 // Button handlers
 fabAdd?.addEventListener('click', () => openModal('modal-add'));
 btnSettings?.addEventListener('click', () => openModal('modal-settings'));
-btnAnalytics?.addEventListener('click', () => openModal('modal-analytics'));
 
 // ===== Tab System =====
 document.querySelectorAll('.tab').forEach(tab => {
@@ -461,8 +460,11 @@ async function loadAnalytics() {
   }
 }
 
-// Load analytics when modal opens
-btnAnalytics?.addEventListener('click', loadAnalytics);
+// Load analytics when Analytics button clicked
+btnAnalytics?.addEventListener('click', () => {
+  openModal('modal-analytics');
+  loadAnalytics();
+});
 
 // ===== Backend Status =====
 const backendStatus = document.getElementById('backend-status');
