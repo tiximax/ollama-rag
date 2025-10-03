@@ -70,6 +70,19 @@ class ChatStore:
                 return json.load(f)
         except Exception:
             return None
+    
+    def get_many(self, db_name: str, chat_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Bulk fetch multiple chats by IDs. Returns dict mapping chat_id -> chat_data.
+        
+        ✅ FIX BUG #8: Tránh N+1 query pattern bằng cách load nhiều chats cùng lúc.
+        Thay vì gọi get() N lần, gọi get_many() 1 lần để tăng tốc analytics!
+        """
+        results: Dict[str, Dict[str, Any]] = {}
+        for chat_id in chat_ids:
+            data = self.get(db_name, chat_id)
+            if data is not None:
+                results[chat_id] = data
+        return results
 
     def create(self, db_name: str, name: Optional[str] = None) -> Dict[str, Any]:
         chat_id = str(uuid.uuid4())

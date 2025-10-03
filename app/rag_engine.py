@@ -23,6 +23,8 @@ from .openai_client import OpenAIClient  # type: ignore
 from .reranker import BgeOnnxReranker, SimpleEmbedReranker
 from .gen_cache import GenCache
 from .exceptions import IngestError, RetrievalError, GenerationError, DatabaseError
+from .cache_utils import LRUCacheWithTTL
+from .file_utils import read_file_by_extension
 
 try:
     from rank_bm25 import BM25Okapi  # type: ignore
@@ -167,11 +169,8 @@ class RagEngine:
         self._bge_rr: Optional[BgeOnnxReranker] = None
         self._embed_rr: Optional[SimpleEmbedReranker] = None
         
-        # Filters cache với TTL (optional)
-        self._filters_cache: Dict[str, List[str]] = {}
-        self._filters_cache_time: Dict[str, float] = {}  # Timestamp cho từng cache key
-        self._filters_cache_ttl = 300  # TTL = 5 minutes (300 seconds)
-        self._filters_lock = threading.Lock()  # Lock for filters cache
+        # ✅ FIX BUG #7: Dùng LRU cache với TTL và size limit - Ngăn memory leak 🧹
+        self._filters_cache = LRUCacheWithTTL[List[str]](max_size=100, ttl=300)
 
     # ===== Multi-DB =====
     @property
@@ -231,18 +230,34 @@ class RagEngine:
     
     @contextlib.contextmanager
     def _faiss_connection(self):
-        """Context manager cho FAISS SQLite connection."""
+        """
+        Context manager cho FAISS SQLite connection.
+        
+        ✅ FIX BUG #5: Proper error handling và logging thay vì silent fail
+        """
         import sqlite3 as _sqlite3
         conn = None
         try:
-            conn = _sqlite3.connect(self._faiss_map_path())
+            # ✅ Add timeout để tránh deadlock
+            conn = _sqlite3.connect(
+                self._faiss_map_path(),
+                timeout=5.0,  # 5 seconds timeout
+                check_same_thread=False  # Allow multi-thread (use carefully!)
+            )
             yield conn
+        except _sqlite3.Error as e:
+            logging.error(f"FAISS SQLite connection error: {e}")
+            raise  # ✅ Re-raise thay vì silent fail
+        except Exception as e:
+            logging.error(f"Unexpected FAISS connection error: {e}")
+            raise
         finally:
             if conn:
                 try:
                     conn.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    # ✅ Log warning but don't raise (avoid masking original exception)
+                    logging.warning(f"Failed to close FAISS connection: {e}")
 
     def _init_faiss(self) -> None:
         """Initialize FAISS index with proper resource management."""
@@ -368,33 +383,52 @@ class RagEngine:
         return re.fullmatch(r"[A-Za-z0-9_.-]+", name) is not None
 
     def use_db(self, name: str) -> str:
+        """Switch to different DB. ✅ FIX BUG #10: Normalize name on Windows! 🎊"""
         if not self._valid_db_name(name):
             raise ValueError("Invalid db name")
-        if name == self.db_name:
+        
+        # ✅ Normalize DB name for Windows case-insensitivity
+        from .validators import normalize_db_name
+        normalized_name = normalize_db_name(name)
+        
+        if normalized_name == self.db_name:
             return self.db_name
-        self.db_name = name
+        
+        self.db_name = normalized_name
         self._init_client()
         # Reset cache handle to new DB path
         self.gen_cache = GenCache(self.persist_dir, enabled=GEN_CACHE_ENABLE, ttl_sec=GEN_CACHE_TTL)
         return self.db_name
 
     def create_db(self, name: str) -> str:
+        """Create new DB. ✅ FIX BUG #10: Normalize name to avoid duplicates!"""
         if not self._valid_db_name(name):
             raise ValueError("Invalid db name")
-        p = os.path.join(self.persist_root, name)
+        
+        # ✅ Normalize DB name for Windows case-insensitivity
+        from .validators import normalize_db_name
+        normalized_name = normalize_db_name(name)
+        
+        p = os.path.join(self.persist_root, normalized_name)
         if os.path.exists(p):
-            raise FileExistsError(f"DB '{name}' already exists")
+            raise FileExistsError(f"DB '{normalized_name}' already exists")
         os.makedirs(p, exist_ok=False)
-        return name
+        return normalized_name
 
     def delete_db(self, name: str) -> None:
+        """Delete DB. ✅ FIX BUG #10: Normalize name for consistent deletion!"""
         if not self._valid_db_name(name):
             raise ValueError("Invalid db name")
-        p = os.path.join(self.persist_root, name)
+        
+        # ✅ Normalize DB name for Windows case-insensitivity
+        from .validators import normalize_db_name
+        normalized_name = normalize_db_name(name)
+        
+        p = os.path.join(self.persist_root, normalized_name)
         if not os.path.exists(p):
             return
         # If deleting current DB, switch to DEFAULT_DB (create if needed)
-        deleting_current = (name == self.db_name)
+        deleting_current = (normalized_name == self.db_name)
         shutil.rmtree(p, ignore_errors=True)
         if deleting_current:
             self.db_name = DEFAULT_DB
@@ -473,47 +507,56 @@ class RagEngine:
         return len(docs)
 
     def ingest_paths(self, paths: List[str], version: Optional[str] = None) -> int:
+        """
+        Ingest files from paths với proper error handling.
+        
+        ✅ FIX BUG #6: Specific exceptions, error tracking, file size limits
+        
+        Returns:
+            Number of chunks indexed
+        """
         import glob
 
         contents: List[str] = []
         metas: List[Dict[str, Any]] = []
+        errors: List[Dict[str, str]] = []  # ✅ Track errors
+        
         for p in paths:
             for file in glob.glob(p, recursive=True):
                 if os.path.isdir(file):
                     # Ingest *.txt, *.pdf, *.docx recursively
                     for pattern in ("*.txt", "*.pdf", "*.docx"):
                         for f2 in glob.glob(os.path.join(file, "**", pattern), recursive=True):
-                            text = ""
-                            try:
-                                if f2.lower().endswith(".txt"):
-                                    with open(f2, "r", encoding="utf-8") as fh:
-                                        text = fh.read()
-                                elif f2.lower().endswith(".pdf"):
-                                    text = extract_text_from_pdf(f2)
-                                elif f2.lower().endswith(".docx"):
-                                    text = extract_text_from_docx(f2)
-                            except Exception:
-                                text = ""
-                            if text:
-                                contents.append(text)
+                            # ✅ Use safe file reading with error tracking
+                            content, error = read_file_by_extension(f2)
+                            if content:
+                                contents.append(content)
                                 metas.append({"source": f2})
+                            elif error:
+                                logging.warning(f"Skipping {f2}: {error}")
+                                errors.append({"file": f2, "error": error})
                 else:
-                    text = ""
-                    try:
-                        if file.lower().endswith(".txt"):
-                            with open(file, "r", encoding="utf-8") as fh:
-                                text = fh.read()
-                        elif file.lower().endswith(".pdf"):
-                            text = extract_text_from_pdf(file)
-                        elif file.lower().endswith(".docx"):
-                            text = extract_text_from_docx(file)
-                    except Exception:
-                        text = ""
-                    if text:
-                        contents.append(text)
+                    # ✅ Use safe file reading
+                    content, error = read_file_by_extension(file)
+                    if content:
+                        contents.append(content)
                         metas.append({"source": file})
+                    elif error:
+                        logging.warning(f"Skipping {file}: {error}")
+                        errors.append({"file": file, "error": error})
+        
+        # ✅ Log summary
+        if errors:
+            logging.warning(f"Ingest completed with {len(errors)} errors: {len(contents)} files processed")
+        
         if not contents:
+            if errors:
+                raise IngestError(
+                    f"No files ingested successfully. {len(errors)} file(s) failed. "
+                    f"First error: {errors[0]['error']}"
+                )
             return 0
+        
         return self.ingest_texts(contents, metas, version=version)
 
     # ===== Docs listing/deletion =====
@@ -630,20 +673,65 @@ class RagEngine:
         self._filters_cache.clear()
 
     def _ensure_bm25(self) -> bool:
-        if self._bm25 is None:
-            self._build_bm25_from_collection()
-        return self._bm25 is not None
+        """
+        Ensure BM25 index exists - THREAD-SAFE VERSION 🔒
+        
+        Uses double-checked locking pattern to prevent race conditions:
+        1. Check if _bm25 exists (fast path, no lock)
+        2. If None, acquire lock
+        3. Re-check if _bm25 exists (another thread may have initialized it)
+        4. Build if still None
+        
+        ✅ FIX BUG #4: Prevents multiple threads from rebuilding BM25 simultaneously
+        """
+        # Fast path: BM25 already exists
+        if self._bm25 is not None:
+            return True
+        
+        # Slow path: Need to build BM25
+        with self._bm25_lock:
+            # Double-check after acquiring lock
+            # (another thread may have built it while we waited for lock)
+            if self._bm25 is None:
+                self._build_bm25_from_collection()
+            
+            return self._bm25 is not None
 
     # ===== Retrieval =====
     def _meta_match(self, meta: Dict[str, Any], languages: Optional[List[str]], versions: Optional[List[str]]) -> bool:
-        if languages:
+        """
+        Check if metadata matches filter criteria.
+        
+        ✅ FIX BUG #11: Robust null/empty handling:
+        - None filters → no filtering (match all)
+        - Empty list [] → no filtering (match all)
+        - Non-empty list → filter to matches only
+        - Handle None metadata values gracefully
+        """
+        # ✅ Check if meta is None or empty dict
+        if meta is None:
+            meta = {}
+        
+        # ✅ Languages filter - handle None, empty list, and None values
+        if languages is not None and len(languages) > 0:
             lang = meta.get("language")
-            if lang is None or str(lang) not in set(languages):
+            # Skip docs with None/missing language if filter is active
+            if lang is None:
                 return False
-        if versions:
+            # Check if language matches any in filter list
+            if str(lang) not in set(languages):
+                return False
+        
+        # ✅ Versions filter - handle None, empty list, and None values
+        if versions is not None and len(versions) > 0:
             ver = meta.get("version")
-            if ver is None or str(ver) not in set(versions):
+            # Skip docs with None/missing version if filter is active
+            if ver is None:
                 return False
+            # Check if version matches any in filter list
+            if str(ver) not in set(versions):
+                return False
+        
         return True
 
     def retrieve(self, query: str, top_k: int = 5, *, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -738,19 +826,63 @@ class RagEngine:
 
     @staticmethod
     def _to_similarity(distances: List[float]) -> List[float]:
-        # Convert distance to similarity in [0,1) using 1/(1+d)
-        sims = [1.0 / (1.0 + float(d)) for d in distances]
+        """
+        Convert distances to similarities.
+        
+        ✅ FIX BUG #12: Handle NaN/Inf gracefully để tránh propagate lỗi!
+        """
+        sims = []
+        for d in distances:
+            try:
+                # ✅ Safe conversion với NaN/Inf check
+                val = float(d)
+                if _np.isnan(val) or _np.isinf(val):
+                    # Fallback: Inf distance → 0 similarity, NaN → 0
+                    sims.append(0.0)
+                else:
+                    sims.append(1.0 / (1.0 + val))
+            except (TypeError, ValueError, ZeroDivisionError):
+                # Fallback for any conversion errors
+                sims.append(0.0)
         return sims
 
     @staticmethod
     def _min_max(values: List[float]) -> List[float]:
+        """
+        Min-max normalization to [0, 1] range.
+        
+        ✅ FIX BUG #12: Safe division with edge cases:
+        - Empty list → return empty
+        - All same values → return all 1.0 (avoid division by zero)
+        - NaN/Inf values → filter out gracefully
+        """
         if not values:
             return []
-        vmin = min(values)
-        vmax = max(values)
-        if vmax - vmin <= 1e-12:
+        
+        # ✅ Filter out NaN/Inf values để tránh lỗi tính toán
+        clean_values = []
+        for v in values:
+            try:
+                val = float(v)
+                if not (_np.isnan(val) or _np.isinf(val)):
+                    clean_values.append(val)
+                else:
+                    clean_values.append(0.0)  # Replace NaN/Inf with 0
+            except (TypeError, ValueError):
+                clean_values.append(0.0)  # Fallback for conversion errors
+        
+        if not clean_values:
+            return [0.0 for _ in values]
+        
+        vmin = min(clean_values)
+        vmax = max(clean_values)
+        
+        # ✅ Check for division by zero (all values same)
+        if abs(vmax - vmin) <= 1e-12:
             return [1.0 for _ in values]
-        return [(v - vmin) / (vmax - vmin) for v in values]
+        
+        # ✅ Safe normalization
+        return [(v - vmin) / (vmax - vmin) for v in clean_values]
 
     @staticmethod
     def _make_key(doc: str, meta: Dict[str, Any]) -> Tuple[str, Any, Any]:
@@ -1213,28 +1345,30 @@ class RagEngine:
 
     # ===== Filters =====
     def get_filters(self) -> Dict[str, List[str]]:
-        """Get available filters với TTL-based caching."""
-        with self._filters_lock:
-            # cache key by collection (db)
-            cache_key = f"{self.persist_dir}:{self.collection_name}"
-            
-            # Check if cache is valid (exists and not expired)
-            now = time.time()
-            cache_timestamp = self._filters_cache_time.get(cache_key, 0)
-            cache_age = now - cache_timestamp
-            
-            if cache_key in self._filters_cache and cache_age < self._filters_cache_ttl:
-                # Cache hit and not expired
-                langs = self._filters_cache.get(cache_key + ":langs", [])
-                vers = self._filters_cache.get(cache_key + ":vers", [])
-                return {"languages": langs, "versions": vers}
+        """
+        Get available filters với LRU caching.
+        
+        ✅ FIX BUG #7: Dùng LRU cache với TTL để ngăn memory leak
+        """
+        # Cache key by collection (db)
+        cache_key = f"{self.persist_dir}:{self.collection_name}"
+        
+        # Try to get from cache
+        cached = self._filters_cache.get(cache_key)
+        if cached is not None:
+            # Cache hit!
+            return {"languages": cached[0], "versions": cached[1]}
+        
+        # Cache miss - query database
         try:
             results = self.collection.get(include=["metadatas"])  # type: ignore[arg-type]
         except Exception:
             results = self.collection.get()
+        
         metas: List[Dict[str, Any]] = results.get("metadatas", [])  # type: ignore[assignment]
         langs_set = set()
         vers_set = set()
+        
         for m in metas:
             v = m.get("version")
             if isinstance(v, str) and v.strip():
@@ -1242,12 +1376,11 @@ class RagEngine:
             l = m.get("language")
             if isinstance(l, str) and l.strip():
                 langs_set.add(l.strip())
-            langs = sorted(langs_set)
-            vers = sorted(vers_set)
-            
-            # Store cache entries với timestamp
-            self._filters_cache[cache_key + ":langs"] = langs
-            self._filters_cache[cache_key + ":vers"] = vers
-            self._filters_cache_time[cache_key] = time.time()
-            
-            return {"languages": langs, "versions": vers}
+        
+        langs = sorted(langs_set)
+        vers = sorted(vers_set)
+        
+        # Store in LRU cache as tuple
+        self._filters_cache.set(cache_key, (langs, vers))
+        
+        return {"languages": langs, "versions": vers}

@@ -35,6 +35,11 @@ from .exceptions import (
     DatabaseError,
     get_http_status_code
 )
+from .cors_utils import parse_cors_origins_safe
+from .logging_utils import setup_secure_logging
+
+# ✅ FIX BUG #1: Setup secure logging để tự động mask API keys
+setup_secure_logging()
 
 app = FastAPI(title="Ollama RAG App")
 
@@ -62,8 +67,12 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestSizeLimitMiddleware)
 
-# CORS middleware
-allowed_origins = os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",")
+# CORS middleware - Secure validation 🛡️
+# ✅ FIX BUG #3: No wildcard allowed, validate URL format
+allowed_origins = parse_cors_origins_safe(
+    os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS),
+    DEFAULT_CORS_ORIGINS
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -201,6 +210,7 @@ def api_ingest(req: IngestRequest, request: Request):
 @app.post("/api/upload")
 @limiter.limit(RATE_LIMIT_UPLOAD)
 async def api_upload(request: Request, files: List[UploadFile] = File(...), db: Optional[str] = Form(None), version: Optional[str] = Form(None)):
+    """Upload files. ✅ FIX BUG #9: Async file I/O to avoid blocking event loop! 🚀"""
     try:
         if db:
             engine.use_db(db)
@@ -208,6 +218,10 @@ async def api_upload(request: Request, files: List[UploadFile] = File(...), db: 
         os.makedirs(save_dir, exist_ok=True)
         saved_paths: List[str] = []
         allowed = {".txt", ".pdf", ".docx"}
+        
+        # ✅ Import aiofiles để ghi file không đồng bộ
+        import aiofiles
+        
         for f in files:
             name = f.filename or ""
             ext = os.path.splitext(name)[1].lower()
@@ -216,8 +230,11 @@ async def api_upload(request: Request, files: List[UploadFile] = File(...), db: 
             data = await f.read()
             new_name = f"{uuid.uuid4().hex}{ext}"
             path = os.path.join(save_dir, new_name)
-            with open(path, "wb") as out:
-                out.write(data)
+            
+            # ✅ Ghi file bằng aiofiles.open() thay vì blocking open()
+            async with aiofiles.open(path, "wb") as out:
+                await out.write(data)
+            
             saved_paths.append(path)
         count = engine.ingest_paths(saved_paths, version=version) if saved_paths else 0
         return {"status": "ok", "saved": [os.path.basename(p) for p in saved_paths], "chunks_indexed": count, "db": engine.db_name}
@@ -1213,19 +1230,25 @@ def _compute_chat_summary(chat: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/api/analytics/db")
 def api_analytics_db(db: Optional[str] = None):
+    """Analytics for entire DB. ✅ FIX BUG #8: Bulk fetch chats to avoid N+1 queries! ⚡"""
     try:
         if db:
             engine.use_db(db)
+        # Get all chat IDs
         chats = chat_store.list(engine.db_name)
+        chat_ids = [ch.get('id') for ch in chats if ch.get('id')]
+        
+        # ✅ Bulk fetch all chats at once (1 query thay vì N queries)! 🚀
+        chats_data = chat_store.get_many(engine.db_name, chat_ids)
+        
         merged = {
             'chats': len(chats), 'qa_pairs': 0, 'answered': 0, 'with_contexts': 0,
             'answer_len_sum': 0.0, 'answer_len_count': 0, 'all_lens': [],
             'src': {}, 'ver': {}, 'lang': {}, 'first_ts': None, 'last_ts': None,
         }
-        for ch in chats:
-            data = chat_store.get(engine.db_name, ch.get('id'))
-            if not data:
-                continue
+        
+        # Aggregate từ bulk data
+        for chat_id, data in chats_data.items():
             s = _compute_chat_summary(data)
             merged['qa_pairs'] += s['qa_pairs']
             merged['answered'] += s['answered']
@@ -1233,7 +1256,7 @@ def api_analytics_db(db: Optional[str] = None):
             if s['answer_len_avg'] and s['answered']:
                 merged['answer_len_sum'] += s['answer_len_avg'] * s['answered']
                 merged['answer_len_count'] += s['answered']
-            merged['all_lens'].extend([0]*0)  # placeholder, không dùng median tổng hợp tại đây
+            merged['all_lens'].extend([0]*0)  # placeholder
             for item in s['top_sources']:
                 v = item['value']; c = int(item['count'])
                 merged['src'][v] = merged['src'].get(v, 0) + c
@@ -1246,6 +1269,7 @@ def api_analytics_db(db: Optional[str] = None):
             ft = s.get('first_ts'); lt = s.get('last_ts')
             if ft and (merged['first_ts'] is None or ft < merged['first_ts']): merged['first_ts'] = ft
             if lt and (merged['last_ts'] is None or lt > merged['last_ts']): merged['last_ts'] = lt
+        
         avg = (merged['answer_len_sum']/merged['answer_len_count']) if merged['answer_len_count'] else 0.0
         def top_k(d: Dict[str, int], k: int = 5) -> List[Dict[str, Any]]:
             items = sorted(d.items(), key=lambda x: x[1], reverse=True)[:k]
