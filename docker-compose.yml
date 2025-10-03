@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # Ollama LLM service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-rag-llm
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Backend API service
+  backend:
+    build: .
+    container_name: ollama-rag-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PROVIDER=ollama
+      - LLM_MODEL=llama3.2
+      - EMBED_MODEL=nomic-embed-text
+      - PERSIST_ROOT=/app/data/kb
+      - CORS_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+      - LOG_LEVEL=INFO
+      - GEN_CACHE_ENABLE=1
+      - VECTOR_BACKEND=chroma
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Cloudflare Tunnel (optional - uncomment to use)
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: ollama-rag-tunnel
+  #   command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+  #   restart: unless-stopped
+  #   networks:
+  #     - rag-network
+  #   depends_on:
+  #     - backend
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+    driver: local
