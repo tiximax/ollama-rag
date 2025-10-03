@@ -321,9 +321,33 @@ class SemanticQueryCache:
         with self._lock:
             self._cache.clear()
             try:
-                metrics.update_semcache_size(0, self.max_size)
+                metrics.update_semcache_size(len(self._cache), self.max_size)
             except Exception:
                 pass
+
+    def clear_namespace(self, namespace: str, prefix: bool = False) -> int:
+        """Xóa các entries theo namespace.
+
+        Args:
+            namespace: Namespace cần xóa (ví dụ "DB:stamp").
+            prefix: Nếu True, coi `namespace` là tiền tố (vd: "DB:" sẽ xóa mọi stamp của DB đó).
+
+        Returns:
+            Số lượng entries đã xóa.
+        """
+        with self._lock:
+            to_delete: list[str] = []
+            for k, e in self._cache.items():
+                ns = e.namespace or ""
+                if (not prefix and ns == namespace) or (prefix and ns.startswith(namespace)):
+                    to_delete.append(k)
+            for k in to_delete:
+                del self._cache[k]
+            try:
+                metrics.update_semcache_size(len(self._cache), self.max_size)
+            except Exception:
+                pass
+            return len(to_delete)
 
     def cleanup_expired(self) -> int:
         """Dọn dẹp các entries đã hết hạn.
@@ -333,10 +357,8 @@ class SemanticQueryCache:
         """
         with self._lock:
             expired_keys = [key for key, entry in self._cache.items() if entry.is_expired(self.ttl)]
-
             for key in expired_keys:
                 del self._cache[key]
-
             self._stats["expirations"] += len(expired_keys)
             try:
                 metrics.update_semcache_size(len(self._cache), self.max_size)
@@ -345,11 +367,7 @@ class SemanticQueryCache:
             return len(expired_keys)
 
     def stats(self) -> dict[str, Any]:
-        """Trả về statistics của cache.
-
-        Returns:
-            Dict chứa metrics như hit rate, miss rate, etc.
-        """
+        """Trả về statistics của cache."""
         with self._lock:
             total_requests = self._stats["hits"] + self._stats["misses"]
             hit_rate = self._stats["hits"] / total_requests if total_requests > 0 else 0.0
@@ -358,7 +376,6 @@ class SemanticQueryCache:
                 if self._stats["hits"] > 0
                 else 0.0
             )
-
             return {
                 **self._stats,
                 "total_requests": total_requests,
