@@ -11,6 +11,7 @@ from slowapi.errors import RateLimitExceeded
 import os
 import json
 import uuid
+import time
 
 from .rag_engine import RagEngine
 from .chat_store import ChatStore
@@ -37,11 +38,32 @@ from .exceptions import (
 )
 from .cors_utils import parse_cors_origins_safe
 from .logging_utils import setup_secure_logging
+from prometheus_fastapi_instrumentator import Instrumentator
+from . import metrics
 
 # ✅ FIX BUG #1: Setup secure logging để tự động mask API keys
 setup_secure_logging()
 
-app = FastAPI(title="Ollama RAG App")
+app = FastAPI(
+    title="Ollama RAG API",
+    version=APP_VERSION,
+    description="Production-ready RAG application with Ollama LLM",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# ✅ Prometheus metrics instrumentation 📊
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    should_respect_env_var=True,
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=["/metrics"],
+    env_var_name="ENABLE_METRICS",
+    inprogress_name="http_requests_inprogress",
+    inprogress_labels=True,
+)
+instrumentator.instrument(app).expose(app, endpoint="/metrics", tags=["Monitoring"])
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -66,6 +88,28 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 app.add_middleware(RequestSizeLimitMiddleware)
+
+# Request ID middleware - Track every request with unique ID 🆔
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = str(uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+app.add_middleware(RequestIDMiddleware)
+
+# Response Time middleware - Track API performance ⏱️
+class ResponseTimeMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = f"{process_time:.4f}"
+        return response
+
+app.add_middleware(ResponseTimeMiddleware)
 
 # CORS middleware - Secure validation 🛡️
 # ✅ FIX BUG #3: No wildcard allowed, validate URL format
@@ -101,24 +145,30 @@ app.add_middleware(SecurityHeadersMiddleware)
 async def ollama_rag_exception_handler(request: Request, exc: OllamaRAGException):
     """Handle custom Ollama RAG exceptions."""
     status_code = get_http_status_code(exc)
+    request_id = getattr(request.state, 'request_id', 'unknown')
     return JSONResponse(
         status_code=status_code,
         content={
             "error": exc.__class__.__name__,
             "message": str(exc),
-            "detail": getattr(exc, 'detail', None)
-        }
+            "detail": getattr(exc, 'detail', None),
+            "request_id": request_id
+        },
+        headers={"X-Request-ID": request_id}
     )
 
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
     """Handle ValueError from validators."""
+    request_id = getattr(request.state, 'request_id', 'unknown')
     return JSONResponse(
         status_code=400,
         content={
             "error": "ValidationError",
-            "message": str(exc)
-        }
+            "message": str(exc),
+            "request_id": request_id
+        },
+        headers={"X-Request-ID": request_id}
     )
 
 # Khởi tạo engine với thiết lập Multi-DB (tương thích ngược)
@@ -129,33 +179,78 @@ chat_store = ChatStore(engine.persist_root)
 feedback_store = FeedbackStore(engine.persist_root)
 exp_logger = ExperimentLogger(engine.persist_root)
 
+# ✅ Initialize application metrics 📊
+metrics.set_app_info(version=APP_VERSION, db_type="chromadb")
+
 # Phục vụ web UI
 app.mount("/static", StaticFiles(directory="web"), name="static")
 
 
-@app.get("/")
+@app.get("/", tags=["Web UI"])
 def root():
     return FileResponse("web/index.html")
 
 
-@app.get("/health")
+@app.get("/health", tags=["System"])
 def health_check():
-    """Health check endpoint for monitoring."""
+    """Enhanced health check endpoint with detailed metrics. ✅"""
     from datetime import datetime
+    import psutil
     
     ollama_healthy = engine.ollama.health_check()
     db_healthy = os.path.exists(engine.persist_dir)
+    
+    # ✅ Update Ollama health metric
+    metrics.update_ollama_health(ollama_healthy)
+    
+    # ✅ Get database stats
+    try:
+        db_count = engine.collection.count()
+        metrics.update_database_size(engine.db_name, db_count)
+    except Exception:
+        db_count = 0
+    
+    # ✅ Get chat stats
+    try:
+        chats = chat_store.list(engine.db_name)
+        chat_count = len(chats)
+        metrics.update_active_chats(engine.db_name, chat_count)
+    except Exception:
+        chat_count = 0
+    
+    # ✅ System resource stats
+    try:
+        mem = psutil.virtual_memory()
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        disk = psutil.disk_usage(os.path.dirname(engine.persist_dir))
+        
+        system_stats = {
+            "memory_used_percent": mem.percent,
+            "memory_available_gb": round(mem.available / (1024**3), 2),
+            "cpu_percent": cpu_percent,
+            "disk_used_percent": disk.percent,
+            "disk_free_gb": round(disk.free / (1024**3), 2)
+        }
+    except Exception:
+        system_stats = None
     
     status = "healthy" if (ollama_healthy and db_healthy) else "degraded"
     
     return {
         "status": status,
         "timestamp": datetime.utcnow().isoformat() + "Z",
-        "db": engine.db_name,
-        "persist_dir": engine.persist_dir,
-        "ollama_connected": ollama_healthy,
-        "db_exists": db_healthy,
-        "version": APP_VERSION
+        "version": APP_VERSION,
+        "services": {
+            "ollama": {"healthy": ollama_healthy},
+            "database": {
+                "healthy": db_healthy,
+                "name": engine.db_name,
+                "path": engine.persist_dir,
+                "document_count": db_count
+            },
+            "chats": {"count": chat_count}
+        },
+        "system": system_stats
     }
 
 
@@ -195,7 +290,7 @@ class IngestRequest(BaseModel):
         return v
 
 
-@app.post("/api/ingest")
+@app.post("/api/ingest", tags=["Ingestion"])
 @limiter.limit(RATE_LIMIT_INGEST)
 def api_ingest(req: IngestRequest, request: Request):
     try:
@@ -207,7 +302,7 @@ def api_ingest(req: IngestRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ===== Upload & Ingest =====
-@app.post("/api/upload")
+@app.post("/api/upload", tags=["Ingestion"])
 @limiter.limit(RATE_LIMIT_UPLOAD)
 async def api_upload(request: Request, files: List[UploadFile] = File(...), db: Optional[str] = Form(None), version: Optional[str] = Form(None)):
     """Upload files. ✅ FIX BUG #9: Async file I/O to avoid blocking event loop! 🚀"""
@@ -290,12 +385,17 @@ class MultiHopQueryRequest(BaseModel):
     rr_num_threads: Optional[int] = None
 
 
-@app.post("/api/query")
+@app.post("/api/query", tags=["RAG Query"])
 @limiter.limit(RATE_LIMIT_QUERY)
 def api_query(req: QueryRequest, request: Request):
     try:
         if req.db:
             engine.use_db(req.db)
+        
+        # ✅ Track query metrics
+        provider = req.provider or engine.default_provider
+        metrics.track_query(req.method, provider, engine.db_name)
+        
         import time as _t
         t0 = int(_t.time() * 1000)
         result = engine.answer(
@@ -359,10 +459,14 @@ def api_query(req: QueryRequest, request: Request):
             pass
         return result
     except Exception as e:
+        # ✅ Track query error
+        provider = req.provider or engine.default_provider
+        error_type = type(e).__name__
+        metrics.track_query_error(req.method, provider, error_type)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/stream_query")
+@app.post("/api/stream_query", tags=["RAG Query"])
 @limiter.limit(RATE_LIMIT_QUERY)
 def api_stream_query(req: QueryRequest, request: Request):
     try:
@@ -511,7 +615,7 @@ def api_stream_query(req: QueryRequest, request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/multihop_query")
+@app.post("/api/multihop_query", tags=["RAG Query"])
 def api_multihop_query(req: MultiHopQueryRequest):
     try:
         if req.db:
@@ -576,7 +680,7 @@ def api_multihop_query(req: MultiHopQueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/stream_multihop_query")
+@app.post("/api/stream_multihop_query", tags=["RAG Query"])
 def api_stream_multihop_query(req: MultiHopQueryRequest):
     try:
         def gen():
@@ -673,7 +777,7 @@ class ChatCreate(BaseModel):
 class ChatRename(BaseModel):
     name: str
 
-@app.get("/api/chats")
+@app.get("/api/chats", tags=["Chat Management"])
 def api_chats_list(db: Optional[str] = None):
     try:
         if db:
@@ -682,7 +786,7 @@ def api_chats_list(db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/chats")
+@app.post("/api/chats", tags=["Chat Management"])
 def api_chats_create(req: ChatCreate):
     try:
         if req.db:
@@ -693,7 +797,7 @@ def api_chats_create(req: ChatCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 # Define search BEFORE dynamic {chat_id} routes to avoid conflicts
-@app.get("/api/chats/search")
+@app.get("/api/chats/search", tags=["Chat Management"])
 def api_chats_search(q: str, db: Optional[str] = None):
     try:
         if db:
@@ -702,7 +806,7 @@ def api_chats_search(q: str, db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/chats/export_db")
+@app.get("/api/chats/export_db", tags=["Chat Management"])
 def api_chats_export_db(format: str = "json", db: Optional[str] = None):
     try:
         if db:
@@ -717,7 +821,7 @@ def api_chats_export_db(format: str = "json", db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/chats/{chat_id}")
+@app.get("/api/chats/{chat_id}", tags=["Chat Management"])
 def api_chats_get(chat_id: str, db: Optional[str] = None):
     try:
         if db:
@@ -731,7 +835,7 @@ def api_chats_get(chat_id: str, db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.patch("/api/chats/{chat_id}")
+@app.patch("/api/chats/{chat_id}", tags=["Chat Management"])
 def api_chats_rename(chat_id: str, req: ChatRename, db: Optional[str] = None):
     try:
         if db:
@@ -743,7 +847,7 @@ def api_chats_rename(chat_id: str, req: ChatRename, db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/api/chats/{chat_id}")
+@app.delete("/api/chats/{chat_id}", tags=["Chat Management"])
 def api_chats_delete(chat_id: str, db: Optional[str] = None):
     try:
         if db:
@@ -753,7 +857,7 @@ def api_chats_delete(chat_id: str, db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/api/chats")
+@app.delete("/api/chats", tags=["Chat Management"])
 def api_chats_delete_all(db: Optional[str] = None):
     try:
         if db:
@@ -764,7 +868,7 @@ def api_chats_delete_all(db: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/chats/{chat_id}/export")
+@app.get("/api/chats/{chat_id}/export", tags=["Chat Management"])
 def api_chats_export(chat_id: str, format: str = "json", db: Optional[str] = None):
     try:
         if db:
@@ -790,7 +894,7 @@ class ProviderName(BaseModel):
     name: str
 
 # ===== Filters API =====
-@app.get("/api/filters")
+@app.get("/api/filters", tags=["System"])
 def api_get_filters(db: Optional[str] = None):
     try:
         if db:
@@ -805,7 +909,7 @@ class DocsDeleteRequest(BaseModel):
     db: Optional[str] = None
 
 
-@app.get("/api/docs")
+@app.get("/api/docs", tags=["Document Management"])
 def api_docs_list(db: Optional[str] = None):
     try:
         if db:
@@ -815,7 +919,7 @@ def api_docs_list(db: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/api/docs")
+@app.delete("/api/docs", tags=["Document Management"])
 def api_docs_delete(req: DocsDeleteRequest):
     try:
         if req.db:
@@ -850,7 +954,7 @@ class EvalRequest(BaseModel):
     languages: Optional[List[str]] = None
     versions: Optional[List[str]] = None
 
-@app.post("/api/eval/offline")
+@app.post("/api/eval/offline", tags=["Evaluation"])
 def api_eval_offline(req: EvalRequest):
     try:
         if req.db:
@@ -928,7 +1032,7 @@ class LogsEnableReq(BaseModel):
     db: Optional[str] = None
     enabled: bool
 
-@app.get("/api/logs/info")
+@app.get("/api/logs/info", tags=["Logs"])
 def api_logs_info(db: Optional[str] = None):
     try:
         if db:
@@ -937,7 +1041,7 @@ def api_logs_info(db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/logs/enable")
+@app.post("/api/logs/enable", tags=["Logs"])
 def api_logs_enable(req: LogsEnableReq):
     try:
         if req.db:
@@ -946,7 +1050,7 @@ def api_logs_enable(req: LogsEnableReq):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/logs/export")
+@app.get("/api/logs/export", tags=["Logs"])
 def api_logs_export(db: Optional[str] = None, since: Optional[str] = None, until: Optional[str] = None):
     try:
         if db:
@@ -961,7 +1065,7 @@ def api_logs_export(db: Optional[str] = None, since: Optional[str] = None, until
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/api/logs")
+@app.delete("/api/logs", tags=["Logs"])
 def api_logs_clear(db: Optional[str] = None):
     try:
         if db:
@@ -971,7 +1075,7 @@ def api_logs_clear(db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/logs/summary")
+@app.get("/api/logs/summary", tags=["Logs"])
 def api_logs_summary(db: Optional[str] = None, since: Optional[str] = None, until: Optional[str] = None):
     """Tóm tắt nhanh logs JSONL: tổng số, median latency, contexts_rate, phân bố theo route/provider/method."""
     try:
@@ -1036,7 +1140,7 @@ def api_logs_summary(db: Optional[str] = None, since: Optional[str] = None, unti
         raise HTTPException(status_code=500, detail=str(e))
 
 # ===== Citations Export APIs =====
-@app.get("/api/citations/chat/{chat_id}")
+@app.get("/api/citations/chat/{chat_id}", tags=["Citations"])
 def api_citations_chat(chat_id: str, format: str = "json", db: Optional[str] = None, sources: Optional[str] = None, versions: Optional[str] = None, languages: Optional[str] = None):
     try:
         if db:
@@ -1120,7 +1224,7 @@ def api_citations_chat(chat_id: str, format: str = "json", db: Optional[str] = N
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/citations/db")
+@app.get("/api/citations/db", tags=["Citations"])
 def api_citations_db(format: str = 'json', db: Optional[str] = None, sources: Optional[str] = None, versions: Optional[str] = None, languages: Optional[str] = None):
     try:
         if db:
@@ -1228,7 +1332,7 @@ def _compute_chat_summary(chat: Dict[str, Any]) -> Dict[str, Any]:
         'last_ts': last_ts,
     }
 
-@app.get("/api/analytics/db")
+@app.get("/api/analytics/db", tags=["Analytics"])
 def api_analytics_db(db: Optional[str] = None):
     """Analytics for entire DB. ✅ FIX BUG #8: Bulk fetch chats to avoid N+1 queries! ⚡"""
     try:
@@ -1291,7 +1395,7 @@ def api_analytics_db(db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/analytics/chat/{chat_id}")
+@app.get("/api/analytics/chat/{chat_id}", tags=["Analytics"])
 def api_analytics_chat(chat_id: str, db: Optional[str] = None):
     try:
         if db:
@@ -1308,14 +1412,14 @@ def api_analytics_chat(chat_id: str, db: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/provider")
+@app.get("/api/provider", tags=["System"])
 def api_get_provider():
     try:
         return {"provider": engine.default_provider}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/provider")
+@app.post("/api/provider", tags=["System"])
 def api_set_provider(req: ProviderName):
     try:
         name = (req.name or "ollama").lower()
@@ -1329,7 +1433,7 @@ def api_set_provider(req: ProviderName):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ===== Health API =====
-@app.get("/api/health")
+@app.get("/api/health", tags=["System"])
 def api_health():
     """Trả trạng thái backend mở rộng: Ollama/OpenAI, models, và gợi ý khắc phục."""
     try:
@@ -1430,7 +1534,7 @@ class FeedbackItem(BaseModel):
     versions: Optional[List[str]] = None
     sources: Optional[List[str]] = None
 
-@app.post("/api/feedback")
+@app.post("/api/feedback", tags=["Feedback"])
 def api_feedback_add(item: FeedbackItem):
     try:
         if item.db:
@@ -1442,7 +1546,7 @@ def api_feedback_add(item: FeedbackItem):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/feedback")
+@app.get("/api/feedback", tags=["Feedback"])
 def api_feedback_list(db: Optional[str] = None, limit: int = 50):
     try:
         if db:
@@ -1452,7 +1556,7 @@ def api_feedback_list(db: Optional[str] = None, limit: int = 50):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/api/feedback")
+@app.delete("/api/feedback", tags=["Feedback"])
 def api_feedback_clear(db: Optional[str] = None):
     try:
         if db:
@@ -1467,7 +1571,7 @@ class DbName(BaseModel):
     name: str
 
 
-@app.get("/api/dbs")
+@app.get("/api/dbs", tags=["Database"])
 def api_list_dbs():
     try:
         return {"current": engine.db_name, "dbs": engine.list_dbs()}
@@ -1475,7 +1579,7 @@ def api_list_dbs():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/dbs/use")
+@app.post("/api/dbs/use", tags=["Database"])
 def api_use_db(req: DbName):
     try:
         current = engine.use_db(req.name)
@@ -1484,7 +1588,7 @@ def api_use_db(req: DbName):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/dbs/create")
+@app.post("/api/dbs/create", tags=["Database"])
 def api_create_db(req: DbName):
     try:
         engine.create_db(req.name)
@@ -1495,7 +1599,7 @@ def api_create_db(req: DbName):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/api/dbs/{name}")
+@app.delete("/api/dbs/{name}", tags=["Database"])
 def api_delete_db(name: str):
     try:
         engine.delete_db(name)

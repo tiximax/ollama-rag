@@ -16,3 +16,5 @@ langid>=1.1.6
 python-multipart>=0.0.9
 filelock>=3.12
 slowapi>=0.1.9
+prometheus-fastapi-instrumentator>=7.0.0
+psutil>=5.9.0
