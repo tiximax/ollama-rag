@@ -266,7 +266,7 @@ def get_cache_stats():
 
         # Get semantic cache stats 🧠
         semantic_cache_stats = None
-        if hasattr(app.state, 'semantic_cache') and app.state.semantic_cache:
+        if hasattr(app.state, 'semantic_cache') and (app.state.semantic_cache is not None):
             semantic_cache_stats = app.state.semantic_cache.stats()
 
         # Get database info
@@ -598,7 +598,7 @@ def api_query(req: QueryRequest, request: Request):
         # 🧠 Check semantic cache first (if enabled)
         cached_result = None
         cache_metadata = None
-        if hasattr(app.state, 'semantic_cache') and app.state.semantic_cache:
+        if hasattr(app.state, 'semantic_cache') and (app.state.semantic_cache is not None):
             try:
                 cached_result, cache_metadata = app.state.semantic_cache.get(
                     req.query, engine.ollama.embed, return_metadata=True
@@ -653,12 +653,12 @@ def api_query(req: QueryRequest, request: Request):
         result["cache_hit"] = False  # Mark as fresh query
 
         # 🧠 Cache the result (if semantic cache enabled)
-        if hasattr(app.state, 'semantic_cache') and app.state.semantic_cache:
+        if hasattr(app.state, 'semantic_cache') and (app.state.semantic_cache is not None):
             try:
                 app.state.semantic_cache.set(req.query, result, engine.ollama.embed)
-                print(f"💾 Query cached: {req.query[:50]}...")
+                print(f"Query cached: {req.query[:50]}...")
             except Exception as e:
-                print(f"⚠️ Failed to cache query: {e}")
+                print(f"Failed to cache query: {e}")
 
         # Log
         try:
