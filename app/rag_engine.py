@@ -6,7 +6,11 @@ import json
 import logging
 import time
 import hashlib
+import contextlib
+import threading
 from typing import List, Dict, Any, Sequence, Optional, Tuple
+
+import numpy as _np  # for FAISS cosine and array building
 
 from dotenv import load_dotenv
 
@@ -17,6 +21,10 @@ from chromadb.config import Settings
 from .ollama_client import OllamaClient
 from .openai_client import OpenAIClient  # type: ignore
 from .reranker import BgeOnnxReranker, SimpleEmbedReranker
+from .gen_cache import GenCache
+from .exceptions import IngestError, RetrievalError, GenerationError, DatabaseError
+from .cache_utils import LRUCacheWithTTL
+from .file_utils import read_file_by_extension
 
 try:
     from rank_bm25 import BM25Okapi  # type: ignore
@@ -29,6 +37,12 @@ except Exception:  # pragma: no cover
     langid = None  # optional dependency
 
 load_dotenv()
+# Optional FAISS (install via: pip install faiss-cpu). Import lazily.
+try:
+    import faiss as _faiss  # type: ignore
+except Exception:  # pragma: no cover
+    _faiss = None  # type: ignore
+
 # Giảm nhiễu log/telemetry từ chromadb trong test/CI
 for _name in ("chromadb", "chromadb.telemetry", "chromadb.telemetry.posthog"):
     try:
@@ -41,6 +55,13 @@ PERSIST_ROOT = os.getenv("PERSIST_ROOT", "data/kb")
 DEFAULT_DB = os.getenv("DB_NAME", "default")
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
+
+# Vector backend: chroma | faiss
+VECTOR_BACKEND = os.getenv("VECTOR_BACKEND", "chroma").lower().strip()
+
+# Generation cache
+GEN_CACHE_ENABLE = os.getenv("GEN_CACHE_ENABLE", "1").strip() not in ("0", "false", "False")
+GEN_CACHE_TTL = int(os.getenv("GEN_CACHE_TTL", "86400"))
 
 # RRF config
 RRF_ENABLE_DEFAULT = os.getenv("RRF_ENABLE", "1").strip() not in ("0", "false", "False")
@@ -65,8 +86,13 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
 
 
 def extract_text_from_pdf(path: str) -> str:
+    """Extract text from PDF with proper error handling."""
     try:
         from pypdf import PdfReader
+    except ImportError as e:
+        raise IngestError(f"pypdf not installed. Run: pip install pypdf") from e
+    
+    try:
         reader = PdfReader(path)
         texts: List[str] = []
         for page in reader.pages:
@@ -74,17 +100,28 @@ def extract_text_from_pdf(path: str) -> str:
             if t:
                 texts.append(t)
         return "\n\n".join(texts)
-    except Exception:
+    except Exception as e:
+        # Log error but return empty string for graceful degradation
+        import logging
+        logging.warning(f"Failed to extract PDF {path}: {e}")
         return ""
 
 
 def extract_text_from_docx(path: str) -> str:
+    """Extract text from DOCX with proper error handling."""
     try:
         from docx import Document
+    except ImportError as e:
+        raise IngestError(f"python-docx not installed. Run: pip install python-docx") from e
+    
+    try:
         doc = Document(path)
         paras = [p.text for p in doc.paragraphs if p.text and p.text.strip()]
         return "\n".join(paras)
-    except Exception:
+    except Exception as e:
+        # Log error but return empty string for graceful degradation
+        import logging
+        logging.warning(f"Failed to extract DOCX {path}: {e}")
         return ""
 
 
@@ -114,20 +151,26 @@ class RagEngine:
         self.ollama = OllamaClient()
         self._openai: Optional[OpenAIClient] = None
         self.default_provider = os.getenv("PROVIDER", "ollama").lower()
+        self.vector_backend = VECTOR_BACKEND if _faiss is not None else "chroma"
         # Initialize storage and client
         self._init_client()
+
+        # Generation cache per DB
+        self.gen_cache = GenCache(self.persist_dir, enabled=GEN_CACHE_ENABLE, ttl_sec=GEN_CACHE_TTL)
 
         # BM25 state (in-memory)
         self._bm25 = None  # type: ignore
         self._bm25_docs: List[str] = []
         self._bm25_metas: List[Dict[str, Any]] = []
         self._bm25_tokens: List[List[str]] = []
+        self._bm25_lock = threading.RLock()  # Reentrant lock for BM25 operations
+        
         # Reranker
         self._bge_rr: Optional[BgeOnnxReranker] = None
         self._embed_rr: Optional[SimpleEmbedReranker] = None
         
-        # Filters cache (optional)
-        self._filters_cache: Dict[str, List[str]] = {}
+        # ✅ FIX BUG #7: Dùng LRU cache với TTL và size limit - Ngăn memory leak 🧹
+        self._filters_cache = LRUCacheWithTTL[List[str]](max_size=100, ttl=300)
 
     # ===== Multi-DB =====
     @property
@@ -136,6 +179,8 @@ class RagEngine:
 
     def _init_client(self) -> None:
         os.makedirs(self.persist_dir, exist_ok=True)
+        # Ensure corpus stamp exists
+        self._ensure_corpus_stamp()
         try:
             self.client = PersistentClient(path=self.persist_dir, settings=Settings(anonymized_telemetry=False))
         except Exception:
@@ -145,8 +190,175 @@ class RagEngine:
             name=self.collection_name,
             embedding_function=OllamaEmbeddingFunction(self.ollama),
         )
+        # Optional FAISS init
+        self._faiss_index = None
+        self._faiss_map_conn = None
+        if self.vector_backend == "faiss" and _faiss is not None:
+            self._init_faiss()
         # invalidate bm25 on (re)init
         self._bm25 = None
+
+    def _stamp_path(self) -> str:
+        return os.path.join(self.persist_dir, ".corpus_stamp")
+
+    def _ensure_corpus_stamp(self) -> None:
+        try:
+            p = self._stamp_path()
+            if not os.path.isfile(p):
+                with open(p, "w", encoding="utf-8") as f:
+                    f.write(str(int(time.time())))
+            with open(p, "r", encoding="utf-8") as f:
+                self._corpus_stamp = f.read().strip()
+        except Exception:
+            self._corpus_stamp = "0"
+
+    def _bump_corpus_stamp(self) -> None:
+        try:
+            p = self._stamp_path()
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(str(int(time.time())))
+            self._corpus_stamp = str(int(time.time()))
+        except Exception:
+            pass
+
+    # ===== FAISS helpers =====
+    def _faiss_map_path(self) -> str:
+        return os.path.join(self.persist_dir, "faiss_map.sqlite")
+
+    def _faiss_index_path(self) -> str:
+        return os.path.join(self.persist_dir, "faiss.index")
+    
+    @contextlib.contextmanager
+    def _faiss_connection(self):
+        """
+        Context manager cho FAISS SQLite connection.
+        
+        ✅ FIX BUG #5: Proper error handling và logging thay vì silent fail
+        """
+        import sqlite3 as _sqlite3
+        conn = None
+        try:
+            # ✅ Add timeout để tránh deadlock
+            conn = _sqlite3.connect(
+                self._faiss_map_path(),
+                timeout=5.0,  # 5 seconds timeout
+                check_same_thread=False  # Allow multi-thread (use carefully!)
+            )
+            yield conn
+        except _sqlite3.Error as e:
+            logging.error(f"FAISS SQLite connection error: {e}")
+            raise  # ✅ Re-raise thay vì silent fail
+        except Exception as e:
+            logging.error(f"Unexpected FAISS connection error: {e}")
+            raise
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception as e:
+                    # ✅ Log warning but don't raise (avoid masking original exception)
+                    logging.warning(f"Failed to close FAISS connection: {e}")
+
+    def _init_faiss(self) -> None:
+        """Initialize FAISS index with proper resource management."""
+        try:
+            # Create tables using context manager
+            with self._faiss_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("CREATE TABLE IF NOT EXISTS map (idx INTEGER PRIMARY KEY, id TEXT UNIQUE)")
+                cur.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)")
+                conn.commit()
+            
+            # Keep _faiss_map_conn = None, use context manager for queries
+            self._faiss_map_conn = None
+            
+            # load index if exists
+            idx_path = self._faiss_index_path()
+            if os.path.isfile(idx_path):
+                self._faiss_index = _faiss.read_index(idx_path)  # type: ignore[attr-defined]
+            else:
+                self._faiss_index = None
+        except Exception:
+            self._faiss_index = None
+            self._faiss_map_conn = None
+            # fail soft: will fallback to chroma
+
+    def _faiss_map_get_idx(self, idv: str) -> Optional[int]:
+        """Get index for ID using context manager."""
+        try:
+            with self._faiss_connection() as conn:
+                cur = conn.cursor()
+                row = cur.execute("SELECT idx FROM map WHERE id=?", (idv,)).fetchone()
+                return int(row[0]) if row else None
+        except Exception:
+            return None
+
+    def _faiss_map_add_many(self, ids: List[str], start_idx: int) -> None:
+        """Add many IDs using context manager."""
+        try:
+            with self._faiss_connection() as conn:
+                cur = conn.cursor()
+                for i, idv in enumerate(ids):
+                    cur.execute("INSERT OR IGNORE INTO map(idx,id) VALUES(?,?)", (start_idx + i, idv))
+                conn.commit()
+        except Exception:
+            pass
+
+    def _faiss_id_by_idx(self, idxs: List[int]) -> List[Optional[str]]:
+        """Get IDs by indexes using context manager."""
+        try:
+            with self._faiss_connection() as conn:
+                cur = conn.cursor()
+                out: List[Optional[str]] = []
+                for i in idxs:
+                    row = cur.execute("SELECT id FROM map WHERE idx=?", (int(i),)).fetchone()
+                    out.append(str(row[0]) if row else None)
+                return out
+        except Exception:
+            return [None for _ in idxs]
+
+    @staticmethod
+    def _l2_normalize(mat: _np.ndarray) -> _np.ndarray:
+        norm = _np.linalg.norm(mat, axis=1, keepdims=True) + 1e-12
+        return mat / norm
+
+    def _faiss_add(self, embeddings: List[List[float]], ids: List[str]) -> None:
+        if _faiss is None or not embeddings or not ids:
+            return
+        try:
+            d = len(embeddings[0])
+            X = _np.array(embeddings, dtype=_np.float32)
+            X = self._l2_normalize(X)
+            if self._faiss_index is None:
+                # Inner Product on normalized vectors ~ cosine similarity
+                self._faiss_index = _faiss.IndexFlatIP(d)  # type: ignore[attr-defined]
+            start = int(self._faiss_index.ntotal)  # type: ignore[union-attr]
+            self._faiss_index.add(X)  # type: ignore[union-attr]
+            self._faiss_map_add_many(ids, start)
+            _faiss.write_index(self._faiss_index, self._faiss_index_path())  # type: ignore[attr-defined]
+        except Exception:
+            # fail soft
+            pass
+
+    def _faiss_query(self, embedding: List[float], top_k: int) -> Tuple[List[str], List[float]]:
+        if _faiss is None or self._faiss_index is None:
+            return [], []
+        try:
+            q = _np.array([embedding], dtype=_np.float32)
+            q = self._l2_normalize(q)
+            scores, idxs = self._faiss_index.search(q, max(1, int(top_k)))  # type: ignore[union-attr]
+            idx_list = [int(i) for i in idxs[0]]
+            score_list = [float(s) for s in scores[0]]
+            ids = self._faiss_id_by_idx(idx_list)
+            out_ids: List[str] = []
+            aligned_scores: List[float] = []
+            for maybe_id, sc in zip(ids, score_list):
+                if maybe_id is not None:
+                    out_ids.append(maybe_id)
+                    aligned_scores.append(sc)
+            return out_ids, aligned_scores
+        except Exception:
+            return [], []
 
     def list_dbs(self) -> List[str]:
         if not os.path.isdir(self.persist_root):
@@ -171,35 +383,81 @@ class RagEngine:
         return re.fullmatch(r"[A-Za-z0-9_.-]+", name) is not None
 
     def use_db(self, name: str) -> str:
+        """Switch to different DB. ✅ FIX BUG #10: Normalize name on Windows! 🎊"""
         if not self._valid_db_name(name):
             raise ValueError("Invalid db name")
-        if name == self.db_name:
+        
+        # ✅ Normalize DB name for Windows case-insensitivity
+        from .validators import normalize_db_name
+        normalized_name = normalize_db_name(name)
+        
+        if normalized_name == self.db_name:
             return self.db_name
-        self.db_name = name
+        
+        self.db_name = normalized_name
         self._init_client()
+        # Reset cache handle to new DB path
+        self.gen_cache = GenCache(self.persist_dir, enabled=GEN_CACHE_ENABLE, ttl_sec=GEN_CACHE_TTL)
         return self.db_name
 
     def create_db(self, name: str) -> str:
+        """Create new DB. ✅ FIX BUG #10: Normalize name to avoid duplicates!"""
         if not self._valid_db_name(name):
             raise ValueError("Invalid db name")
-        p = os.path.join(self.persist_root, name)
+        
+        # ✅ Normalize DB name for Windows case-insensitivity
+        from .validators import normalize_db_name
+        normalized_name = normalize_db_name(name)
+        
+        p = os.path.join(self.persist_root, normalized_name)
         if os.path.exists(p):
-            raise FileExistsError(f"DB '{name}' already exists")
+            raise FileExistsError(f"DB '{normalized_name}' already exists")
         os.makedirs(p, exist_ok=False)
-        return name
+        return normalized_name
 
     def delete_db(self, name: str) -> None:
+        """Delete DB. ✅ FIX BUG #10: Normalize name for consistent deletion!"""
         if not self._valid_db_name(name):
             raise ValueError("Invalid db name")
-        p = os.path.join(self.persist_root, name)
+        
+        # ✅ Normalize DB name for Windows case-insensitivity
+        from .validators import normalize_db_name
+        normalized_name = normalize_db_name(name)
+        
+        p = os.path.join(self.persist_root, normalized_name)
         if not os.path.exists(p):
             return
         # If deleting current DB, switch to DEFAULT_DB (create if needed)
-        deleting_current = (name == self.db_name)
+        deleting_current = (normalized_name == self.db_name)
         shutil.rmtree(p, ignore_errors=True)
         if deleting_current:
             self.db_name = DEFAULT_DB
             self._init_client()
+            self.gen_cache = GenCache(self.persist_dir, enabled=GEN_CACHE_ENABLE, ttl_sec=GEN_CACHE_TTL)
+    
+    def cleanup(self) -> None:
+        """Cleanup resources (call before shutdown)."""
+        # Clear caches
+        self._bm25 = None
+        self._filters_cache.clear()
+        
+        # Note: _faiss_map_conn is always None now (using context manager)
+        # FAISS index will be garbage collected
+        self._faiss_index = None
+        
+        # Gen cache cleanup if needed
+        if hasattr(self, 'gen_cache'):
+            try:
+                del self.gen_cache
+            except Exception:
+                pass
+    
+    def __del__(self) -> None:
+        """Destructor - cleanup resources."""
+        try:
+            self.cleanup()
+        except Exception:
+            pass
 
     # ===== Ingest =====
     def _detect_lang(self, text: str) -> Optional[str]:
@@ -232,54 +490,73 @@ class RagEngine:
                 }
                 mds.append(meta)
         self.collection.add(ids=ids, documents=docs, metadatas=mds)
+        # Optional: add to FAISS
+        if self.vector_backend == "faiss" and _faiss is not None:
+            try:
+                # recompute embeddings locally for FAISS index
+                embs = self.ollama.embed(list(docs))
+                self._faiss_add(embs, list(ids))
+            except Exception:
+                pass
         # invalidate bm25 to rebuild on next query
         self._bm25 = None
         # clear filters cache
         self._filters_cache.clear()
+        # bump corpus stamp to invalidate gen-cache for new knowledge
+        self._bump_corpus_stamp()
         return len(docs)
 
     def ingest_paths(self, paths: List[str], version: Optional[str] = None) -> int:
+        """
+        Ingest files from paths với proper error handling.
+        
+        ✅ FIX BUG #6: Specific exceptions, error tracking, file size limits
+        
+        Returns:
+            Number of chunks indexed
+        """
         import glob
 
         contents: List[str] = []
         metas: List[Dict[str, Any]] = []
+        errors: List[Dict[str, str]] = []  # ✅ Track errors
+        
         for p in paths:
             for file in glob.glob(p, recursive=True):
                 if os.path.isdir(file):
                     # Ingest *.txt, *.pdf, *.docx recursively
                     for pattern in ("*.txt", "*.pdf", "*.docx"):
                         for f2 in glob.glob(os.path.join(file, "**", pattern), recursive=True):
-                            text = ""
-                            try:
-                                if f2.lower().endswith(".txt"):
-                                    with open(f2, "r", encoding="utf-8") as fh:
-                                        text = fh.read()
-                                elif f2.lower().endswith(".pdf"):
-                                    text = extract_text_from_pdf(f2)
-                                elif f2.lower().endswith(".docx"):
-                                    text = extract_text_from_docx(f2)
-                            except Exception:
-                                text = ""
-                            if text:
-                                contents.append(text)
+                            # ✅ Use safe file reading with error tracking
+                            content, error = read_file_by_extension(f2)
+                            if content:
+                                contents.append(content)
                                 metas.append({"source": f2})
+                            elif error:
+                                logging.warning(f"Skipping {f2}: {error}")
+                                errors.append({"file": f2, "error": error})
                 else:
-                    text = ""
-                    try:
-                        if file.lower().endswith(".txt"):
-                            with open(file, "r", encoding="utf-8") as fh:
-                                text = fh.read()
-                        elif file.lower().endswith(".pdf"):
-                            text = extract_text_from_pdf(file)
-                        elif file.lower().endswith(".docx"):
-                            text = extract_text_from_docx(file)
-                    except Exception:
-                        text = ""
-                    if text:
-                        contents.append(text)
+                    # ✅ Use safe file reading
+                    content, error = read_file_by_extension(file)
+                    if content:
+                        contents.append(content)
                         metas.append({"source": file})
+                    elif error:
+                        logging.warning(f"Skipping {file}: {error}")
+                        errors.append({"file": file, "error": error})
+        
+        # ✅ Log summary
+        if errors:
+            logging.warning(f"Ingest completed with {len(errors)} errors: {len(contents)} files processed")
+        
         if not contents:
+            if errors:
+                raise IngestError(
+                    f"No files ingested successfully. {len(errors)} file(s) failed. "
+                    f"First error: {errors[0]['error']}"
+                )
             return 0
+        
         return self.ingest_texts(contents, metas, version=version)
 
     # ===== Docs listing/deletion =====
@@ -355,12 +632,14 @@ class RagEngine:
         return re.findall(r"\w+", (text or "").lower())
 
     def _build_bm25_from_collection(self) -> None:
-        if BM25Okapi is None:
-            self._bm25 = None
-            self._bm25_docs = []
-            self._bm25_metas = []
-            self._bm25_tokens = []
-            return
+        """Build BM25 index with thread safety."""
+        with self._bm25_lock:
+            if BM25Okapi is None:
+                self._bm25 = None
+                self._bm25_docs = []
+                self._bm25_metas = []
+                self._bm25_tokens = []
+                return
         try:
             # Try new API with include
             results = self.collection.get(include=["documents", "metadatas"])  # type: ignore[arg-type]
@@ -394,24 +673,114 @@ class RagEngine:
         self._filters_cache.clear()
 
     def _ensure_bm25(self) -> bool:
-        if self._bm25 is None:
-            self._build_bm25_from_collection()
-        return self._bm25 is not None
+        """
+        Ensure BM25 index exists - THREAD-SAFE VERSION 🔒
+        
+        Uses double-checked locking pattern to prevent race conditions:
+        1. Check if _bm25 exists (fast path, no lock)
+        2. If None, acquire lock
+        3. Re-check if _bm25 exists (another thread may have initialized it)
+        4. Build if still None
+        
+        ✅ FIX BUG #4: Prevents multiple threads from rebuilding BM25 simultaneously
+        """
+        # Fast path: BM25 already exists
+        if self._bm25 is not None:
+            return True
+        
+        # Slow path: Need to build BM25
+        with self._bm25_lock:
+            # Double-check after acquiring lock
+            # (another thread may have built it while we waited for lock)
+            if self._bm25 is None:
+                self._build_bm25_from_collection()
+            
+            return self._bm25 is not None
 
     # ===== Retrieval =====
     def _meta_match(self, meta: Dict[str, Any], languages: Optional[List[str]], versions: Optional[List[str]]) -> bool:
-        if languages:
+        """
+        Check if metadata matches filter criteria.
+        
+        ✅ FIX BUG #11: Robust null/empty handling:
+        - None filters → no filtering (match all)
+        - Empty list [] → no filtering (match all)
+        - Non-empty list → filter to matches only
+        - Handle None metadata values gracefully
+        """
+        # ✅ Check if meta is None or empty dict
+        if meta is None:
+            meta = {}
+        
+        # ✅ Languages filter - handle None, empty list, and None values
+        if languages is not None and len(languages) > 0:
             lang = meta.get("language")
-            if lang is None or str(lang) not in set(languages):
+            # Skip docs with None/missing language if filter is active
+            if lang is None:
                 return False
-        if versions:
+            # Check if language matches any in filter list
+            if str(lang) not in set(languages):
+                return False
+        
+        # ✅ Versions filter - handle None, empty list, and None values
+        if versions is not None and len(versions) > 0:
             ver = meta.get("version")
-            if ver is None or str(ver) not in set(versions):
+            # Skip docs with None/missing version if filter is active
+            if ver is None:
                 return False
+            # Check if version matches any in filter list
+            if str(ver) not in set(versions):
+                return False
+        
         return True
 
     def retrieve(self, query: str, top_k: int = 5, *, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
-        # Lấy nhiều hơn rồi lọc theo metadata (an toàn giữa các phiên bản chroma)
+        # If FAISS backend is enabled and available, use it and map IDs back from Chroma
+        if self.vector_backend == "faiss" and _faiss is not None and self._faiss_index is not None:
+            try:
+                q_emb = self.ollama.embed([query])[0]
+                ids, scores = self._faiss_query(q_emb, max(top_k * 5, 25))
+                if ids:
+                    # Fetch documents/metas for these ids from Chroma
+                    try:
+                        results = self.collection.get(ids=ids, include=["documents", "metadatas"])  # type: ignore[arg-type]
+                        docs_all: List[str] = results.get("documents", [])
+                        metas_all: List[Dict[str, Any]] = results.get("metadatas", [])
+                    except Exception:
+                        results = self.collection.get(ids=ids)
+                        docs_all = results.get("documents", [])
+                        metas_all = results.get("metadatas", [])
+                    # Build dict by id to preserve FAISS order
+                    id_to_doc = {}
+                    id_to_meta = {}
+                    # results may return lists aligned with ids param
+                    for i, idv in enumerate(ids):
+                        if i < len(docs_all):
+                            id_to_doc[idv] = docs_all[i]
+                        if i < len(metas_all):
+                            id_to_meta[idv] = metas_all[i]
+                    # Filter and keep order
+                    filt_docs: List[str] = []
+                    filt_metas: List[Dict[str, Any]] = []
+                    filt_dists: List[float] = []
+                    for idv, s in zip(ids, scores):
+                        d = id_to_doc.get(idv)
+                        m = id_to_meta.get(idv, {})
+                        if not d:
+                            continue
+                        if self._meta_match(m or {}, languages, versions):
+                            filt_docs.append(d)
+                            filt_metas.append(m)
+                            # Convert cosine sim ~ inner product to pseudo distance
+                            dist = max(0.0, 1.0 - float(s))
+                            filt_dists.append(dist)
+                        if len(filt_docs) >= top_k:
+                            break
+                    return {"documents": filt_docs[:top_k], "metadatas": filt_metas[:top_k], "distances": filt_dists[:top_k], "ids": ids[:len(filt_docs)]}
+            except Exception:
+                # fallback to chroma below
+                pass
+        # Default: Chroma vector query
         n_fetch = max(top_k * 5, 25)
         n_fetch = min(n_fetch, 200)
         results = self.collection.query(query_texts=[query], n_results=n_fetch)
@@ -438,8 +807,10 @@ class RagEngine:
     def retrieve_bm25(self, query: str, top_k: int = 5, *, languages: Optional[List[str]] = None, versions: Optional[List[str]] = None) -> Dict[str, Any]:
         if not self._ensure_bm25():
             return {"documents": [], "metadatas": [], "scores": []}
-        q_tokens = self._tokenize(query)
-        scores_list = list(self._bm25.get_scores(q_tokens))  # type: ignore[union-attr]
+        
+        with self._bm25_lock:
+            q_tokens = self._tokenize(query)
+            scores_list = list(self._bm25.get_scores(q_tokens))  # type: ignore[union-attr]
         # chỉ lấy các chỉ số khớp filter theo thứ tự điểm giảm dần
         idxs_sorted = sorted(range(len(scores_list)), key=lambda i: scores_list[i], reverse=True)
         sel: List[int] = []
@@ -455,19 +826,63 @@ class RagEngine:
 
     @staticmethod
     def _to_similarity(distances: List[float]) -> List[float]:
-        # Convert distance to similarity in [0,1) using 1/(1+d)
-        sims = [1.0 / (1.0 + float(d)) for d in distances]
+        """
+        Convert distances to similarities.
+        
+        ✅ FIX BUG #12: Handle NaN/Inf gracefully để tránh propagate lỗi!
+        """
+        sims = []
+        for d in distances:
+            try:
+                # ✅ Safe conversion với NaN/Inf check
+                val = float(d)
+                if _np.isnan(val) or _np.isinf(val):
+                    # Fallback: Inf distance → 0 similarity, NaN → 0
+                    sims.append(0.0)
+                else:
+                    sims.append(1.0 / (1.0 + val))
+            except (TypeError, ValueError, ZeroDivisionError):
+                # Fallback for any conversion errors
+                sims.append(0.0)
         return sims
 
     @staticmethod
     def _min_max(values: List[float]) -> List[float]:
+        """
+        Min-max normalization to [0, 1] range.
+        
+        ✅ FIX BUG #12: Safe division with edge cases:
+        - Empty list → return empty
+        - All same values → return all 1.0 (avoid division by zero)
+        - NaN/Inf values → filter out gracefully
+        """
         if not values:
             return []
-        vmin = min(values)
-        vmax = max(values)
-        if vmax - vmin <= 1e-12:
+        
+        # ✅ Filter out NaN/Inf values để tránh lỗi tính toán
+        clean_values = []
+        for v in values:
+            try:
+                val = float(v)
+                if not (_np.isnan(val) or _np.isinf(val)):
+                    clean_values.append(val)
+                else:
+                    clean_values.append(0.0)  # Replace NaN/Inf with 0
+            except (TypeError, ValueError):
+                clean_values.append(0.0)  # Fallback for conversion errors
+        
+        if not clean_values:
+            return [0.0 for _ in values]
+        
+        vmin = min(clean_values)
+        vmax = max(clean_values)
+        
+        # ✅ Check for division by zero (all values same)
+        if abs(vmax - vmin) <= 1e-12:
             return [1.0 for _ in values]
-        return [(v - vmin) / (vmax - vmin) for v in values]
+        
+        # ✅ Safe normalization
+        return [(v - vmin) / (vmax - vmin) for v in clean_values]
 
     @staticmethod
     def _make_key(doc: str, meta: Dict[str, Any]) -> Tuple[str, Any, Any]:
@@ -605,7 +1020,7 @@ class RagEngine:
 
         if use_bge and self._bge_rr:
             try:
-                bs = int(rr_batch_size) if rr_batch_size else 16
+                bs = int(rr_batch_size) if rr_batch_size else 32  # Increased from 16 to 32 for better throughput
                 return self._bge_rr.rerank(question, docs_in, metas_in, top_k, batch_size=bs)
             except Exception:
                 pass
@@ -624,26 +1039,45 @@ class RagEngine:
             return self._openai or self.ollama
         return self.ollama
 
-    def generate_text(self, prompt: str, provider: Optional[str] = None) -> str:
-        # TEST_MODE: trả về nhanh chuỗi ngắn có citation [1] để e2e chạy nhanh
+    def _gen_cache_key(self, prompt: str, provider: Optional[str]) -> str:
+        prov = (provider or self.default_provider or "ollama").lower()
+        seed = json.dumps({
+            "prov": prov,
+            "stamp": getattr(self, "_corpus_stamp", "0"),
+            "prompt": prompt,
+            "model": os.getenv("LLM_MODEL", "llama3.1:8b"),
+        }, ensure_ascii=False, sort_keys=True)
         try:
-            if str(os.getenv("TEST_MODE", "0")).strip().lower() not in ("0", "false", "no", ""):
-                return "OK [1] (test-mode)"
+            return hashlib.sha256(seed.encode("utf-8")).hexdigest()
+        except Exception:
+            return str(abs(hash(seed)))
+
+    def generate_text(self, prompt: str, provider: Optional[str] = None) -> str:
+        # Cache layer
+        key = self._gen_cache_key(prompt, provider)
+        cached = self.gen_cache.get(key)
+        if cached is not None and cached.strip():
+            return cached
+        llm = self._get_llm(provider)
+        out = llm.generate(prompt)
+        try:
+            if out and out.strip():
+                self.gen_cache.set(key, out)
         except Exception:
             pass
-        llm = self._get_llm(provider)
-        return llm.generate(prompt)
+        return out
 
     def generate_stream(self, prompt: str, provider: Optional[str] = None):
-        # TEST_MODE: stream nhanh 2 chunk mô phỏng
-        try:
-            if str(os.getenv("TEST_MODE", "0")).strip().lower() not in ("0", "false", "no", ""):
-                def _gen():
-                    yield "OK "
-                    yield "[1] (test-mode)"
-                return _gen()
-        except Exception:
-            pass
+        # If cached, stream from cache to preserve API contract
+        key = self._gen_cache_key(prompt, provider)
+        cached = self.gen_cache.get(key)
+        if cached is not None and cached.strip():
+            chunk = 1024
+            def _gen():
+                s = cached
+                for i in range(0, len(s), chunk):
+                    yield s[i:i+chunk]
+            return _gen()
         llm = self._get_llm(provider)
         return llm.generate_stream(prompt)
 
@@ -911,19 +1345,30 @@ class RagEngine:
 
     # ===== Filters =====
     def get_filters(self) -> Dict[str, List[str]]:
-        # cache key by collection (db)
+        """
+        Get available filters với LRU caching.
+        
+        ✅ FIX BUG #7: Dùng LRU cache với TTL để ngăn memory leak
+        """
+        # Cache key by collection (db)
         cache_key = f"{self.persist_dir}:{self.collection_name}"
-        if cache_key in self._filters_cache:
-            langs = self._filters_cache.get(cache_key + ":langs", [])
-            vers = self._filters_cache.get(cache_key + ":vers", [])
-            return {"languages": langs, "versions": vers}
+        
+        # Try to get from cache
+        cached = self._filters_cache.get(cache_key)
+        if cached is not None:
+            # Cache hit!
+            return {"languages": cached[0], "versions": cached[1]}
+        
+        # Cache miss - query database
         try:
             results = self.collection.get(include=["metadatas"])  # type: ignore[arg-type]
         except Exception:
             results = self.collection.get()
+        
         metas: List[Dict[str, Any]] = results.get("metadatas", [])  # type: ignore[assignment]
         langs_set = set()
         vers_set = set()
+        
         for m in metas:
             v = m.get("version")
             if isinstance(v, str) and v.strip():
@@ -931,9 +1376,11 @@ class RagEngine:
             l = m.get("language")
             if isinstance(l, str) and l.strip():
                 langs_set.add(l.strip())
+        
         langs = sorted(langs_set)
         vers = sorted(vers_set)
-        # store cache entries
-        self._filters_cache[cache_key + ":langs"] = langs
-        self._filters_cache[cache_key + ":vers"] = vers
+        
+        # Store in LRU cache as tuple
+        self._filters_cache.set(cache_key, (langs, vers))
+        
         return {"languages": langs, "versions": vers}

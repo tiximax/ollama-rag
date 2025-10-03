@@ -4,6 +4,10 @@
 
 Ứng dụng RAG nhẹ sử dụng FastAPI + ChromaDB + Ollama (LLM + Embeddings), chạy web UI cục bộ.
 
+---
+
+Sản phẩm sẵn sàng dùng thực tế: Quick Start, Đóng gói Desktop, và Triển khai qua Docker/Cloudflare đã được chuẩn hóa bên dưới.
+
 Tính năng:
 - Ingest tài liệu .txt trong data/docs
 - Tìm kiếm theo vector (ChromaDB)
@@ -14,31 +18,31 @@ Tính năng:
 Yêu cầu:
 - Windows / macOS / Linux
 - Python 3.10+
-- Node.js + npm (để chạy Playwright e2e)
+- Node.js + npm (tùy chọn để chạy Playwright e2e)
 - Ollama (http://localhost:11434) hoặc OpenAI API Key
 
 Cài đặt nhanh (Windows):
-1) Cài Python packages
-   pip install -r requirements.txt
-
-2) (Tùy chọn e2e) Cài Playwright
-   npm install
-   npm run playwright:install
-
-3) Cấu hình (tạo .env từ mẫu)
+0) Sao chép cấu hình mẫu:
    copy .env.example .env
+
+1) Bootstrap môi trường:
+   PowerShell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+   (Tùy chọn e2e: thêm tham số -WithE2E)
+   Hoặc cài thủ công: pip install -r requirements.txt
+
+2) Cấu hình .env:
    - Sửa PROVIDER=ollama hoặc openai
    - Nếu dùng OpenAI, đặt OPENAI_API_KEY (đừng echo/log khóa)
 
-4) Nếu dùng Ollama: kéo models mặc định
+3) Nếu dùng Ollama: kéo models mặc định
    ollama pull llama3.1:8b
    ollama pull nomic-embed-text
 
-5) Chạy server (ổn định – không reload)
-   py -m uvicorn app.main:app --host 127.0.0.1 --port 8001
-   (hoặc dùng script: py start_server.py / py start_server.py dev)
+4) Chạy server (ổn định – không reload):
+   PowerShell -ExecutionPolicy Bypass -File .\start_server.ps1
+   Hoặc: py -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 
-6) Mở UI:
+5) Mở UI:
    http://127.0.0.1:8001
 
 Health/Preflight
@@ -46,11 +50,18 @@ Health/Preflight
   - provider: ollama|openai
   - overall_status: ok|warning|error
   - suggestions: gợi ý khắc phục (ollama serve, ollama pull, cấu hình OPENAI_API_KEY)
-- UI hiển thị chip “Backend” (màu sắc + tooltip). Khi backend chưa OK, các nút Ingest/Gửi sẽ bị vô hiệu hóa tạm thời.
+- UI hiển thị chip "Backend" (màu sắc + tooltip). Khi backend chưa OK, các nút Ingest/Gửi sẽ bị vô hiệu hóa tạm thời.
+
+Chạy Desktop (Windows):
+- Dev: PowerShell -ExecutionPolicy Bypass -File .\scripts\run_desktop.ps1
+- Build gói Desktop (one-folder, kèm server nhúng):
+  PowerShell -ExecutionPolicy Bypass -File .\scripts\build_desktop.ps1
+  → chạy file: .\dist\OllamaRAGDesktop\OllamaRAGDesktop.exe
 
 Triển khai qua Cloudflare Tunnel (tùy chọn)
 - Xem deploy/README.md
 - Docker compose: deploy/docker/docker-compose.yml (cần CF_TUNNEL_TOKEN)
+  + Mẫu biến môi trường: deploy/docker/.env.example (KHÔNG commit token thật)
 - cloudflared native trên Windows: deploy/cloudflared/config.yml.example + start-local.ps1
 
 Chạy tests
@@ -86,6 +97,20 @@ Ví dụ benchmark (rounds=3 trên máy local, tinyllama):
 - bm25 stream (t_ctx/t_ans s): ~0.016 / ~1.07 median
 - hybrid non-stream (latency s): ~5.19 median
 - hybrid stream (t_ctx/t_ans s): ~3.56 / ~5.13 median
+
+Tài liệu (Documentation)
+- docs/INSTALLATION.md — Cài đặt chi tiết
+- docs/CONFIGURATION.md — Cấu hình & biến môi trường
+- docs/ARCHITECTURE.md — Kiến trúc hệ thống
+- docs/API_REFERENCE.md — Tài liệu API
+- docs/WEB_UI_GUIDE.md — Hướng dẫn Web UI
+- docs/DESKTOP_GUIDE.md — Ứng dụng Desktop
+- docs/DEPLOYMENT.md — Triển khai (Cloudflare/Docker)
+- docs/SECURITY.md — Bảo mật
+- docs/TROUBLESHOOTING.md — Xử lý sự cố
+- docs/RELEASE_PROCESS.md — Quy trình phát hành
+- docs/CONTRIBUTING.md — Đóng góp
+- docs/FAQ.md — Câu hỏi thường gặp
 
 UI — các điều khiển chính
 - Menu Hỗ trợ: Quick Start (hướng dẫn 3 bước)
@@ -175,13 +200,15 @@ Multi-hop nâng cao (budget_ms, fanout_first_hop)
 ```
 
 Cấu hình (.env):
+- Xem file .env.example → copy thành .env và chỉnh sửa theo nhu cầu.
 - PROVIDER=ollama|openai (mặc định ollama)
 - OLLAMA_BASE_URL=http://localhost:11434
-- LLM_MODEL=llama3.1:8b
-- EMBED_MODEL=nomic-embed-text
+- LLM_MODEL=llama3.1:8b, EMBED_MODEL=nomic-embed-text
 - CHUNK_SIZE=800, CHUNK_OVERLAP=120
 - OLLAMA_CONNECT_TIMEOUT=5, OLLAMA_READ_TIMEOUT=180, OLLAMA_MAX_RETRIES=3, OLLAMA_RETRY_BACKOFF=0.6
 - OLLAMA_NUM_THREAD, OLLAMA_NUM_CTX, OLLAMA_NUM_GPU (tinh chỉnh hiệu năng)
 - OPENAI_BASE_URL=https://api.openai.com/v1, OPENAI_MODEL=gpt-4o-mini, OPENAI_API_KEY={{OPENAI_API_KEY}}
 - PERSIST_DIR (ví dụ data/chroma) hoặc PERSIST_ROOT=data/kb + DB_NAME=default
-- ORT_INTRA_OP_THREADS, ORT_INTER_OP_THREADS
+- ORT_INTRA_OP_THREADS, ORT_INTER_OP_THREADS (giới hạn luồng ONNXRuntime)
+- VECTOR_BACKEND=chroma|faiss (mặc định chroma). Dùng faiss: pip install faiss-cpu
+- GEN_CACHE_ENABLE=1, GEN_CACHE_TTL=86400 (bộ nhớ đệm trả lời để giảm chi phí)

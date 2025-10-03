@@ -24,9 +24,20 @@ playwright/.cache/
 *.trace.zip
 test-results/
 
+# Coverage & cache
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
 # Data & local artifacts
 data/chroma/
 *.sqlite3
+*.log
+logs/
+
+# Lock & generated
+requirements-lock.txt
 
 # IDE/editor
 .vscode/

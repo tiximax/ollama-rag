@@ -1,265 +1,175 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="vi">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ollama RAG App</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-    <link rel="icon" href="/static/favicon.ico" />
-  </head>
-  <body>
-    <div class="ui-root">
-      <div class="menubar">
-        <span class="menu-item" id="menu-file">File</span>
-        <span class="menu-item" id="menu-settings">Cài đặt</span>
-        <span class="menu-item" id="menu-help">Hỗ trợ</span>
-      </div>
-      <!-- Top action bar -->
-      <div class="topbar">
-        <div class="left">
-          <span class="label">Vector DB:</span>
-          <select id="db-select" class="control" title="Chọn cơ sở dữ liệu (Vector DB)"></select>
-          <input id="db-new-name" class="control" type="text" placeholder="Tên DB mới" title="Nhập tên DB (chỉ chữ/số/._-)" />
-<button id="btn-db-create" class="btn" title="Tạo DB mới">Tạo DB</button>
-<button id="btn-db-delete" class="btn danger" title="Xóa DB hiện tại (không thể hoàn tác)">Xóa DB</button>
-        </div>
-        <div class="right">
-<input id="ingest-paths" class="control wide" type="text" placeholder="Đường dẫn hoặc URL (ví dụ data/docs/*.txt)" title="Hỗ trợ pattern *.txt, phân tách bằng dấu phẩy, hoặc nhập URL" />
-<button id="btn-ingest-paths" class="btn" title="Thêm tài liệu từ đường dẫn/URL vào DB">➕ Thêm vào DB</button>
-<label class="btn file" title="Chọn file .txt, .pdf, .docx để ingest">
-            Chọn file...
-            <input id="file-upload" type="file" multiple accept=".txt,.pdf,.docx" hidden />
-          </label>
-<button id="btn-upload" class="btn" title="Ingest các file đã chọn vào DB">📥 Ingest file</button>
-<button id="btn-reload" class="btn" title="Tải lại danh sách DB, tài liệu và hội thoại">🔄 Tải lại</button>
-<button id="btn-ingest-sample" class="btn" title="Index tài liệu mẫu">Index tài liệu mẫu</button>
-<button id="btn-chat-export-db-json" class="btn" title="Xuất toàn bộ hội thoại của DB thành ZIP (JSON)">📦 Export DB (ZIP)</button>
-          <span id="db-status" class="status"></span>
-<span id="backend-status" class="status" role="status" aria-live="polite"></span>
-        </div>
-      </div>
-      <!-- Global progress bar -->
-      <div id="global-progress" class="progress" hidden>
-        <div id="global-progress-bar" class="bar" style="width:0%"></div>
-        <span id="global-progress-text" class="progress-text"></span>
-      </div>
-
-      <div class="workspace">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-<div class="panel">
-            <div class="panel-title">📄 Tài liệu trong DB (doc_id): <button id="btn-docs-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="false" aria-controls="docs-body">▾</button></div>
-            <div id="docs-body" hidden>
-              <input id="doc-filter" class="control" type="text" placeholder="Lọc tài liệu (từ khóa)" title="Lọc theo từ khóa trong đường dẫn nguồn" />
-              <ul id="doc-list" class="list" aria-live="polite"></ul>
-              <div class="panel-actions">
-                <button id="btn-docs-delete" class="btn danger">🗑️ Xóa tài liệu đã chọn</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <button id="btn-chat-new" class="btn primary full">➕ Hội thoại mới</button>
-          </div>
-
-<div class="panel">
-            <div class="panel-title">💬 Lịch sử hội thoại: <button id="btn-chats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="false" aria-controls="chats-body">▾</button></div>
-            <div id="chats-body" hidden>
-              <input id="chat-filter" class="control" type="text" placeholder="Lọc hội thoại (tên)" title="Lọc theo tên hội thoại" />
-              <ul id="chat-list" class="list" aria-live="polite"></ul>
-              <!-- Hidden select to keep compatibility with existing JS logic -->
-              <select id="chat-select" style="display:none;"></select>
-            </div>
-          </div>
-
-<div class="panel">
-<div class="panel-title">📊 Thống kê nhanh <button id="btn-stats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="true" aria-controls="stats-body">▾</button>
-            <button id="btn-analytics-refresh" class="btn" title="Làm mới Analytics">Làm mới</button></div>
-            <div id="stats-body">
-            <div class="stats-grid" aria-live="polite">
-              <div class="stat"><span class="muted">Chats</span> <strong id="an-chats">-</strong></div>
-              <div class="stat"><span class="muted">Q/A</span> <strong id="an-qa">-</strong></div>
-              <div class="stat"><span class="muted">Đã trả lời</span> <strong id="an-answered">-</strong></div>
-              <div class="stat"><span class="muted">Có ngữ cảnh</span> <strong id="an-withctx">-</strong></div>
-              <div class="stat"><span class="muted">Đ. dài TB</span> <strong id="an-ans-avg">-</strong></div>
-              <div class="stat"><span class="muted">Median</span> <strong id="an-ans-med">-</strong></div>
-            </div>
-            <div class="panel-title muted" style="margin-top:6px">Nguồn nhiều nhất</div>
-            <ul id="an-top-sources" class="list" aria-live="polite"></ul>
-            <div class="panel-title muted" style="margin-top:6px">Phiên bản nhiều nhất</div>
-            <ul id="an-top-versions" class="list" aria-live="polite"></ul>
-            <div class="panel-title muted" style="margin-top:6px">Ngôn ngữ nhiều nhất</div>
-            <ul id="an-top-langs" class="list" aria-live="polite"></ul>
-            </div>
-          </div>
-        </aside>
-
-        <!-- Main area -->
-        <main class="main">
-          <div class="panel">
-            <div class="panel-title">Hỏi - Đáp</div>
-<div id="result" class="result" style="min-height: 160px;" aria-live="polite">Nhập câu hỏi rồi bấm Gửi để bắt đầu. 💡</div>
-            <div id="contexts" class="contexts"></div>
-            <div id="citations" class="citations"></div>
-          </div>
-          <div class="query-row">
-            <input id="txt-query" type="text" placeholder="Nhập câu hỏi... (vd: 'Hướng dẫn cài đặt?')" class="query-input" title="Câu hỏi để truy vấn RAG" />
-<button id="btn-ask" class="btn primary" title="Gửi truy vấn tới backend">Hỏi</button>
-            <label class="opt" title="Top-K (số ngữ cảnh tối đa)">
-              K: <input id="top-k" type="number" min="1" max="50" value="5" class="control" style="width:72px" />
-            </label>
-            <label class="opt" title="Lưu cặp Hỏi/Đáp vào lịch sử"><input id="ck-save-chat" type="checkbox" checked /> Lưu hội thoại</label>
-            <label class="opt">Provider:
-              <select id="provider-select" class="control" title="Chọn dịch vụ sinh câu trả lời">
-                <option value="ollama" selected>Ollama</option>
-                <option value="openai">OpenAI</option>
-              </select>
-            </label>
-            <label class="opt" title="Hiển thị câu trả lời theo luồng"><input id="ck-stream" type="checkbox" /> Streaming</label>
-          </div>
-
-<div class="panel">
-<div class="panel-title">Tùy chọn nâng cao <button id="btn-adv-reset" class="btn" title="Khôi phục thiết lập nâng cao về mặc định">Mặc định</button>
-            <button id="btn-logs-summary-refresh" class="btn" title="Làm mới Logs Summary">Làm mới logs</button></div>
-            <div class="adv-grid">
-<label class="opt" title="Phương pháp truy hồi: Vector (embedding), BM25 (từ khóa), Hybrid (kết hợp)">
-                Phương pháp: <span class="hint" title="vector: ngữ nghĩa | bm25: từ khoá chính xác | hybrid: kết hợp">(?)</span>
-                <select id="method" class="control">
-                  <option value="vector" title="Dựa embedding, hợp câu hỏi ngữ nghĩa" selected>vector (semantic)</option>
-                  <option value="bm25" title="Dựa từ khoá, phù hợp truy vấn chính xác">bm25 (keywords)</option>
-                  <option value="hybrid" title="Kết hợp vector+bm25, cân bằng bằng BM25 weight">hybrid (mix)</option>
-                </select>
-              </label>
-<div id="bm25-weight-wrap" title="Trọng số cho BM25 khi chọn hybrid (0..1). 0.5 = cân bằng.">
-                <label class="opt">BM25 weight <span class="hint" title="Tăng lên → ưu tiên từ khoá; giảm xuống → ưu tiên ngữ nghĩa">(?)</span>: <span id="bm25-weight-val">0.5</span></label>
-                <input id="bm25-weight" type="range" min="0" max="1" step="0.05" value="0.5" class="control" style="width:220px" />
-              </div>
-
-<label class="opt" title="Reranker: sắp xếp lại các ngữ cảnh bằng mô hình ranking">
-                <input id="ck-rerank" type="checkbox" /> Dùng Reranker <span class="hint" title="Cải thiện chất lượng ngữ cảnh nhưng tốn CPU hơn">(?)</span>
-              </label>
-<div id="rerank-topn-wrap" title="Số ngữ cảnh đầu vào cho reranker (Top-N)">
-                <label class="opt">Rerank Top-N <span class="hint" title="Tăng Top-N → reranker có nhiều ứng viên hơn (nhưng chậm hơn)">(?)</span>:
-                  <input id="rerank-topn" type="number" min="1" max="50" value="10" class="control" style="width:80px" />
-                </label>
-              </div>
-              <div id="rerank-adv" title="Thiết lập nâng cao cho reranker">
-<label class="opt">Provider <span class="hint" title="auto: tự chọn | bge: reranker ONNX BGE | embed: dựa độ tương tự embedding">(?)</span>:
-                  <select id="rr-provider" class="control">
-                    <option value="auto" title="Tự động chọn phù hợp" selected>auto</option>
-                    <option value="bge" title="Dùng mô hình rerank BGE (ONNX)">bge</option>
-                    <option value="embed" title="Ưu tiên điểm tương tự embedding">embed</option>
-                  </select>
-                </label>
-                <label class="opt">Max-K:
-                  <input id="rr-maxk" type="number" min="5" max="200" value="50" class="control" style="width:80px" />
-                </label>
-                <label class="opt">Batch:
-                  <input id="rr-batch" type="number" min="1" max="64" value="16" class="control" style="width:80px" />
-                </label>
-                <label class="opt">Threads:
-                  <input id="rr-threads" type="number" min="1" max="16" value="1" class="control" style="width:80px" />
-                </label>
-              </div>
-
-<label class="opt" title="Rewrite: sinh biến thể truy vấn, hợp nhất RRF trước khi rerank/sinh trả lời">
-                <input id="ck-rewrite" type="checkbox" /> Rewrite truy vấn <span class="hint" title="Hữu ích khi câu hỏi ngắn/khó; khuyến nghị n=2-3">(?)</span>
-              </label>
-<div id="rewrite-n-wrap" title="Số biến thể truy vấn để sinh (n)">
-                <label class="opt">n <span class="hint" title="2-3: cân bằng chất lượng/hiệu năng">(?)</span>:
-                  <input id="rewrite-n" type="number" min="1" max="5" value="2" class="control" style="width:72px" />
-                </label>
-              </div>
-
-<label class="opt" title="Multi-hop: phân rã câu hỏi thành nhiều bước truy hồi">
-                <input id="ck-multihop" type="checkbox" /> Multi-hop <span class="hint" title="Hữu ích cho câu hỏi phức tạp; có thể chậm hơn">(?)</span>
-              </label>
-<div id="multihop-depth-wrap" title="Số bước (Depth)">
-                <label class="opt">Depth <span class="hint" title="Tăng Depth để đi sâu hơn; 2 là mặc định hợp lý">(?)</span>:
-                  <input id="hop-depth" type="number" min="1" max="5" value="2" class="control" style="width:72px" />
-                </label>
-              </div>
-<div id="multihop-fanout-wrap" title="Số nhánh mỗi bước (Fanout)">
-                <label class="opt">Fanout <span class="hint" title="Số nhánh expand mỗi hop; 2 là cân bằng">(?)</span>:
-                  <input id="hop-fanout" type="number" min="1" max="5" value="2" class="control" style="width:72px" />
-                </label>
-              </div>
-<div id="multihop-fanout1-wrap" title="Fanout riêng cho hop đầu">
-                <label class="opt">Fanout-1st <span class="hint" title="Giới hạn mở rộng ở hop đầu để giảm nhiễu">(?)</span>:
-                  <input id="hop-fanout1" type="number" min="1" max="5" value="1" class="control" style="width:72px" />
-                </label>
-              </div>
-<div id="multihop-budget-wrap" title="Ngân sách thời gian (ms) cho toàn bộ multi-hop">
-                <label class="opt">Budget (ms) <span class="hint" title="Giới hạn thời gian cho toàn bộ multi-hop; 0 = không giới hạn">(?)</span>:
-                  <input id="hop-budget" type="number" min="0" max="10000" value="0" class="control" style="width:92px" />
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <footer class="footer">
-            <small>Provider: <code id="provider-name">ollama</code> | Model: <code id="model-name">llama3.1:8b</code> | Embed: <code id="embed-name">nomic-embed-text</code></small>
-          </footer>
-        </main>
-      </div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ollama RAG</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <h2>🗂️ Ollama RAG</h2>
+      <button id="sidebar-close" class="btn-icon">✕</button>
     </div>
 
-    <!-- Settings Modal -->
-    <div id="settings-overlay" class="overlay" hidden></div>
-    <div id="settings-modal" class="modal" hidden>
+    <div class="sidebar-section">
+      <label>📚 Database</label>
+      <select id="db-select" class="select-db"></select>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="flex-between">
+        <span>💬 Chats</span>
+        <button id="btn-chat-new" class="btn-icon-sm">➕</button>
+      </div>
+      <ul id="chat-list" class="chat-list"></ul>
+    </div>
+
+    <div class="sidebar-actions">
+      <button id="btn-settings" class="sidebar-btn">⚙️ Settings</button>
+      <button id="btn-analytics" class="sidebar-btn">📊 Analytics</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="app-container">
+    <header class="app-header">
+      <button id="sidebar-toggle" class="btn-icon">☰</button>
+      <h1>Ollama RAG</h1>
+      <span id="backend-status" class="status-dot"></span>
+    </header>
+
+    <main class="chat-main" id="chat-main">
+      <div class="chat-messages" id="chat-messages">
+        <div class="welcome">
+          <div class="welcome-icon">💡</div>
+          <h2>Chào mừng!</h2>
+          <p>Hỏi tôi về tài liệu của bạn</p>
+        </div>
+      </div>
+    </main>
+
+    <div class="input-bar">
+      <textarea id="input-query" placeholder="💬 Nhập câu hỏi..." rows="1"></textarea>
+      <button id="btn-send" class="btn-send">
+        <span>🚀</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- FAB -->
+  <button id="fab-add" class="fab" title="Thêm tài liệu">➕</button>
+
+  <!-- Modal: Add Docs -->
+  <div id="modal-add" class="modal" hidden>
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
       <div class="modal-header">
-        <div class="modal-title">Cài đặt</div>
-        <button id="settings-close" class="btn">✕</button>
+        <h2>📥 Thêm Tài liệu</h2>
+        <button class="modal-close" data-modal="modal-add">✕</button>
       </div>
       <div class="modal-body">
-        <div class="form-row">
-          <label>Provider mặc định</label>
-          <select id="settings-provider" class="control">
+        <div class="upload-area">
+          <input type="file" id="file-upload" multiple hidden>
+          <p>📁 Kéo thả hoặc click chọn file</p>
+          <button class="btn-outline" onclick="document.getElementById('file-upload').click()">Chọn Files</button>
+        </div>
+        <div class="divider">hoặc</div>
+        <input type="text" id="input-url" placeholder="Nhập URL...">
+        <button id="btn-add-docs" class="btn-primary full">➕ Thêm</button>
+        <div id="add-status"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Settings -->
+  <div id="modal-settings" class="modal fullscreen" hidden>
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>⚙️ Settings</h2>
+        <button class="modal-close" data-modal="modal-settings">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="tabs">
+          <button class="tab active" data-tab="general">General</button>
+          <button class="tab" data-tab="databases">Databases</button>
+          <button class="tab" data-tab="advanced">Advanced</button>
+        </div>
+        
+        <div class="tab-content active" id="tab-general">
+          <label>Theme</label>
+          <select id="settings-theme">
+            <option value="dark">🌙 Dark</option>
+            <option value="light">☀️ Light</option>
+          </select>
+          
+          <label>Provider</label>
+          <select id="settings-provider">
             <option value="ollama">Ollama</option>
             <option value="openai">OpenAI</option>
           </select>
         </div>
-        <div class="form-row">
-          <label><input type="checkbox" id="settings-stream-default" /> Streaming mặc định</label>
+
+        <div class="tab-content" id="tab-databases">
+          <label>Tạo DB mới</label>
+          <div class="input-group">
+            <input type="text" id="input-new-db" placeholder="Tên DB...">
+            <button id="btn-create-db">Tạo</button>
+          </div>
+          <button id="btn-delete-db" class="btn-danger">🗑️ Xóa DB</button>
         </div>
-        <div class="form-row">
-          <label>Ngôn ngữ ưu tiên (để lọc sẵn)</label>
-          <input id="settings-langs" class="control" placeholder="vd: vi,en" />
+
+        <div class="tab-content" id="tab-advanced">
+          <label>Method</label>
+          <select id="settings-method">
+            <option value="vector">Vector</option>
+            <option value="bm25">BM25</option>
+            <option value="hybrid">Hybrid</option>
+          </select>
+          <label>Top-K</label>
+          <input type="number" id="settings-topk" value="5" min="1" max="50">
         </div>
-      </div>
-      <div class="modal-footer">
-        <button id="settings-reset-ui" class="btn danger" title="Xóa lưu trạng thái UI và khôi phục mặc định">Khôi phục UI</button>
-        <button id="settings-save" class="btn primary">Lưu</button>
       </div>
     </div>
+  </div>
 
-    <!-- Quick Start Overlay -->
-    <div id="quickstart-overlay" class="overlay" hidden></div>
-    <div id="quickstart-modal" class="modal" hidden>
+  <!-- Modal: Analytics -->
+  <div id="modal-analytics" class="modal" hidden>
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
       <div class="modal-header">
-        <div class="modal-title">Bắt đầu nhanh</div>
-        <button id="quickstart-close" class="btn">✕</button>
+        <h2>📊 Analytics</h2>
+        <button class="modal-close" data-modal="modal-analytics">✕</button>
       </div>
       <div class="modal-body">
-        <ol>
-          <li><strong>Chạy Ollama</strong>: mở PowerShell và chạy <code>ollama serve</code></li>
-          <li><strong>Tải models</strong>:
-            <div><code>ollama pull nomic-embed-text</code></div>
-            <div><code>ollama pull llama3.1:8b</code></div>
-          </li>
-          <li><strong>Ingest &amp; Hỏi</strong>:
-            <div>- Thêm tài liệu: nhập đường dẫn/URL (vd: <code>data/docs/*.txt</code>) hoặc chọn file và bấm “Ingest file”.</div>
-            <div>- Nhập câu hỏi và bấm “Gửi”. (Phím tắt: Enter gửi, Ctrl+Enter bật/tắt Streaming)</div>
-          </li>
-        </ol>
-        <p class="muted">Mẹo: Nếu dùng OpenAI, đổi Provider trong Cài đặt và cài <code>OPENAI_API_KEY</code>.</p>
-      </div>
-      <div class="modal-footer">
-        <button id="quickstart-ok" class="btn primary">OK</button>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Chats</div>
+            <div class="stat-value" id="stat-chats">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Q/A Pairs</div>
+            <div class="stat-value" id="stat-qa">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Answered</div>
+            <div class="stat-value" id="stat-answered">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">With Context</div>
+            <div class="stat-value" id="stat-context">-</div>
+          </div>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
-    <script src="/static/app.js?v=20250926-01"></script>
-  </body>
+  <!-- Toast -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/static/app.js"></script>
+</body>
 </html>

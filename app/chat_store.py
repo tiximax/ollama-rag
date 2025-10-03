@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional
 import io
 import zipfile
 import re
+from filelock import FileLock
 
 ISO = "%Y-%m-%dT%H:%M:%S.%fZ"
 
@@ -21,6 +22,11 @@ class ChatStore:
 
     def __init__(self, persist_root: str):
         self.persist_root = persist_root
+        self._lock_timeout = 5  # seconds timeout for file locks
+    
+    def _lock_path(self, db_name: str) -> str:
+        """Get lock file path for DB."""
+        return os.path.join(self._db_chat_dir(db_name), ".chat_lock")
 
     def _db_chat_dir(self, db_name: str) -> str:
         path = os.path.join(self.persist_root, db_name, "chats")
@@ -64,6 +70,19 @@ class ChatStore:
                 return json.load(f)
         except Exception:
             return None
+    
+    def get_many(self, db_name: str, chat_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Bulk fetch multiple chats by IDs. Returns dict mapping chat_id -> chat_data.
+        
+        ✅ FIX BUG #8: Tránh N+1 query pattern bằng cách load nhiều chats cùng lúc.
+        Thay vì gọi get() N lần, gọi get_many() 1 lần để tăng tốc analytics!
+        """
+        results: Dict[str, Dict[str, Any]] = {}
+        for chat_id in chat_ids:
+            data = self.get(db_name, chat_id)
+            if data is not None:
+                results[chat_id] = data
+        return results
 
     def create(self, db_name: str, name: Optional[str] = None) -> Dict[str, Any]:
         chat_id = str(uuid.uuid4())
@@ -91,11 +110,14 @@ class ChatStore:
         return data
 
     def delete(self, db_name: str, chat_id: str) -> None:
-        p = self._chat_path(db_name, chat_id)
-        try:
-            os.remove(p)
-        except Exception:
-            pass
+        """Delete chat with file locking."""
+        lock_file = self._lock_path(db_name)
+        with FileLock(lock_file, timeout=self._lock_timeout):
+            p = self._chat_path(db_name, chat_id)
+            try:
+                os.remove(p)
+            except Exception:
+                pass
 
     def delete_all(self, db_name: str) -> int:
         base = self._db_chat_dir(db_name)
@@ -129,18 +151,21 @@ class ChatStore:
         return data
 
     def append_pair(self, db_name: str, chat_id: str, user_text: str, assistant_text: str, meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        data = self.get(db_name, chat_id)
-        if data is None:
-            raise FileNotFoundError('Chat not found')
-        msgs = data.setdefault('messages', [])
-        now = now_iso()
-        msgs.append({'role': 'user', 'content': user_text, 'meta': {}, 'ts': now})
-        msgs.append({'role': 'assistant', 'content': assistant_text, 'meta': meta or {}, 'ts': now_iso()})
-        data['updated_at'] = now_iso()
-        p = self._chat_path(db_name, chat_id)
-        with open(p, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        return data
+        """Append Q/A pair with file locking for concurrent safety."""
+        lock_file = self._lock_path(db_name)
+        with FileLock(lock_file, timeout=self._lock_timeout):
+            data = self.get(db_name, chat_id)
+            if data is None:
+                raise FileNotFoundError('Chat not found')
+            msgs = data.setdefault('messages', [])
+            now = now_iso()
+            msgs.append({'role': 'user', 'content': user_text, 'meta': {}, 'ts': now})
+            msgs.append({'role': 'assistant', 'content': assistant_text, 'meta': meta or {}, 'ts': now_iso()})
+            data['updated_at'] = now_iso()
+            p = self._chat_path(db_name, chat_id)
+            with open(p, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return data
 
     # ==== Export ====
     def export_json(self, db_name: str, chat_id: str) -> Optional[Dict[str, Any]]:

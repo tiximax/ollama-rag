@@ -4,6 +4,7 @@ import subprocess
 import time
 import signal
 import json
+import threading
 from typing import Optional, Tuple
 
 import requests
@@ -72,6 +73,62 @@ def start_server(host: str, port: int) -> Optional[subprocess.Popen]:
     proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return proc
 
+# -------- Embedded server (for packaged builds) --------
+_embed_thread: Optional[threading.Thread] = None
+_embed_server_obj = None
+
+def start_server_embedded(host: str, port: int) -> bool:
+    """Start uvicorn server in-process in a background thread.
+    Used when running as a packaged executable (PyInstaller), where spawning
+    "python -m uvicorn" is not available.
+    """
+    global _embed_thread, _embed_server_obj
+    if _embed_thread is not None:
+        return True
+    try:
+        import uvicorn
+        # Import lazily to avoid heavy imports before needed
+        from app.main import app as _app
+        config = uvicorn.Config(_app, host=host, port=port, log_level="info")
+        server = uvicorn.Server(config)
+        _embed_server_obj = server
+
+        def _run():
+            try:
+                server.run()
+            except Exception:
+                pass
+
+        t = threading.Thread(target=_run, name="uvicorn-embedded", daemon=True)
+        t.start()
+        _embed_thread = t
+        # wait briefly to allow startup
+        for _ in range(60):
+            if is_server_up(f"http://{host}:{port}", timeout_sec=0.3):
+                return True
+            time.sleep(0.5)
+        return False
+    except Exception:
+        _embed_thread = None
+        _embed_server_obj = None
+        return False
+
+def stop_server_embedded():
+    global _embed_thread, _embed_server_obj
+    try:
+        if _embed_server_obj is not None:
+            # signal the server to exit
+            try:
+                _embed_server_obj.should_exit = True  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        # give it a moment
+        time.sleep(0.5)
+    except Exception:
+        pass
+    _embed_thread = None
+    _embed_server_obj = None
+
 
 def start_server_if_needed(url: str, host: str, port: int) -> Optional[subprocess.Popen]:
     if is_server_up(url):
@@ -111,9 +168,10 @@ def save_config(url: str, host: str, port: int) -> None:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, server_proc: Optional[subprocess.Popen], url: str, host: str, port: int):
+    def __init__(self, server_proc: Optional[subprocess.Popen], url: str, host: str, port: int, embedded: bool = False):
         super().__init__()
         self.server_proc = server_proc
+        self.embedded = embedded
         self.setWindowTitle("Ollama RAG Desktop")
         self.resize(1200, 800)
 
@@ -235,6 +293,11 @@ class MainWindow(QMainWindow):
 
     # ----- Server controls -----
     def stop_server(self):
+        if self.embedded:
+            try:
+                stop_server_embedded()
+            except Exception:
+                pass
         if self.server_proc is not None:
             try:
                 if os.name == "nt":
@@ -285,11 +348,22 @@ def main():
     # Load config (hoặc ENV mặc định)
     url, host, port = load_config()
 
-    # Nếu server chưa chạy, khởi động server nền trước
-    server_proc = start_server_if_needed(url, host, port)
+    # Khi chạy dạng packaged (PyInstaller), chạy server embedded để tránh phụ thuộc python.exe ngoài
+    is_frozen = bool(getattr(sys, "frozen", False))
+
+    server_proc: Optional[subprocess.Popen] = None
+    embedded = False
+    if is_frozen or os.getenv("DESKTOP_EMBED_SERVER", "0").strip() in ("1", "true", "True"): 
+        # Try embedded
+        if not is_server_up(url):
+            ok = start_server_embedded(host, port)
+            embedded = ok
+    else:
+        # Nếu server chưa chạy, khởi động server nền trước
+        server_proc = start_server_if_needed(url, host, port)
 
     app = QApplication(sys.argv)
-    win = MainWindow(server_proc, url, host, port)
+    win = MainWindow(server_proc, url, host, port, embedded=embedded)
     win.show()
     sys.exit(app.exec())
 
