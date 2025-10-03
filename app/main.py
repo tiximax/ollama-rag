@@ -4,6 +4,11 @@ import time
 import uuid
 from typing import Any
 
+# ✅ Load environment variables from .env file
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env before any other imports that use os.getenv()
+
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -188,6 +193,7 @@ metrics.set_app_info(version=APP_VERSION, db_type="chromadb")
 
 
 # ✅ Startup event - Initialize Semantic Cache 🧠
+# Last updated: 2025-10-03 - Force reload to load .env via dotenv
 @app.on_event("startup")
 async def startup_event():
     """Initialize application resources on startup."""
@@ -216,6 +222,24 @@ def root():
 def get_metrics():
     """✅ Prometheus metrics endpoint for monitoring."""
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/api/debug/cache-state", tags=["Debug"])
+def debug_cache_state():
+    """🔍 Debug endpoint to check semantic cache state."""
+    return {
+        "has_semantic_cache_attr": hasattr(app.state, 'semantic_cache'),
+        "semantic_cache_is_none": (
+            app.state.semantic_cache is None if hasattr(app.state, 'semantic_cache') else "N/A"
+        ),
+        "semantic_cache_type": (
+            str(type(app.state.semantic_cache)) if hasattr(app.state, 'semantic_cache') else "N/A"
+        ),
+        "env_USE_SEMANTIC_CACHE": os.getenv("USE_SEMANTIC_CACHE"),
+        "env_SEMANTIC_CACHE_THRESHOLD": os.getenv("SEMANTIC_CACHE_THRESHOLD"),
+        "env_SEMANTIC_CACHE_SIZE": os.getenv("SEMANTIC_CACHE_SIZE"),
+        "env_SEMANTIC_CACHE_TTL": os.getenv("SEMANTIC_CACHE_TTL"),
+    }
 
 
 @app.get("/api/cache-stats", tags=["Monitoring"])
