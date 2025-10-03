@@ -1156,6 +1156,73 @@ if (citationsDbBtn) citationsDbBtn.addEventListener('click', async () => {
   } catch (e) { ToastManager.error('Lỗi export citations DB: ' + e); }
 });
 
+// ===== Simple Ingest Panel Logic =====
+const fileUploadSimple = document.getElementById('file-upload-simple');
+const ingestUrlSimple = document.getElementById('ingest-url-simple');
+const btnIngestSimple = document.getElementById('btn-ingest-simple');
+const ingestSimpleStatus = document.getElementById('ingest-simple-status');
+
+async function handleSimpleIngest() {
+  try {
+    const files = fileUploadSimple?.files ? Array.from(fileUploadSimple.files) : [];
+    const url = ingestUrlSimple?.value?.trim();
+    
+    if (!files.length && !url) {
+      ToastManager.warning('Chọn file hoặc nhập URL');
+      return;
+    }
+    
+    setButtonLoading(btnIngestSimple, true);
+    if (ingestSimpleStatus) ingestSimpleStatus.textContent = 'Đang xử lý...';
+    
+    if (files.length > 0) {
+      // Upload files
+      const fd = new FormData();
+      files.forEach(f => fd.append('files', f));
+      if (dbSelect.value) fd.append('db', dbSelect.value);
+      
+      const resp = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || resp.status);
+      
+      ToastManager.success(`Đã thêm ${data.saved.length} file (${data.chunks_indexed} chunks)`);
+      if (ingestSimpleStatus) ingestSimpleStatus.textContent = `✅ ${data.saved.length} file`;
+      
+      // Clear file input
+      if (fileUploadSimple) fileUploadSimple.value = '';
+    } else if (url) {
+      // Ingest from URL
+      const params = new URLSearchParams();
+      if (dbSelect.value) params.set('db', dbSelect.value);
+      params.set('paths', url);
+      
+      const resp = await fetch('/api/ingest_by_paths?' + params.toString(), { method: 'POST' });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || resp.status);
+      
+      ToastManager.success(`Đã thêm từ URL (${data.chunks_indexed} chunks)`);
+      if (ingestSimpleStatus) ingestSimpleStatus.textContent = `✅ URL OK`;
+      
+      // Clear URL input
+      if (ingestUrlSimple) ingestUrlSimple.value = '';
+    }
+    
+    await loadFilters();
+  } catch (e) {
+    ToastManager.error('Lỗi ingest: ' + e);
+    if (ingestSimpleStatus) ingestSimpleStatus.textContent = '❌ Lỗi';
+  } finally {
+    setButtonLoading(btnIngestSimple, false);
+    setTimeout(() => {
+      if (ingestSimpleStatus) ingestSimpleStatus.textContent = '';
+    }, 3000);
+  }
+}
+
+if (btnIngestSimple) {
+  btnIngestSimple.addEventListener('click', handleSimpleIngest);
+}
+
 // ===== UI Mode Toggle (Simple/Advanced) =====
 const uiModeBtn = document.getElementById('btn-ui-mode');
 const UI_MODE_KEY = 'ollama-rag-ui-mode';

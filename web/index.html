@@ -62,6 +62,21 @@
             <button id="btn-chat-new" class="btn primary full">➕ Hội thoại mới</button>
           </div>
 
+          <!-- Ingest panel for Simple mode -->
+          <div class="panel" id="panel-ingest-simple">
+            <div class="panel-title">📥 Thêm tài liệu</div>
+            <div class="ingest-simple-body">
+              <label class="btn full file" title="Chọn file .txt, .pdf, .docx để ingest">
+                📁 Chọn Files...
+                <input id="file-upload-simple" type="file" multiple accept=".txt,.pdf,.docx" hidden />
+              </label>
+              <div style="margin: 8px 0; text-align: center; color: #94a3b8; font-size: 12px;">hoặc</div>
+              <input id="ingest-url-simple" class="control" type="text" placeholder="Nhập URL..." title="URL tài liệu để ingest" style="margin-bottom: 6px;" />
+              <button id="btn-ingest-simple" class="btn primary full" title="Ingest file/URL đã chọn">➕ Thêm vào DB</button>
+              <div id="ingest-simple-status" class="status-mini" style="margin-top: 6px; font-size: 11px; color: #94a3b8;"></div>
+            </div>
+          </div>
+
 <div class="panel">
             <div class="panel-title">💬 Lịch sử hội thoại: <button id="btn-chats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="false" aria-controls="chats-body">▾</button></div>
             <div id="chats-body" hidden>

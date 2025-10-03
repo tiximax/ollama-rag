@@ -194,13 +194,35 @@ footer { margin-top: 16px; color: #94a3b8; }
 .simple-mode #btn-db-delete,
 .simple-mode #ingest-paths,
 .simple-mode #btn-ingest-paths,
-.simple-mode label.btn.file,
+.simple-mode .topbar label.btn.file,
 .simple-mode #btn-upload,
 .simple-mode #btn-chat-export-db-json,
 .simple-mode #panel-docs,
 .simple-mode #panel-stats,
 .simple-mode #panel-advanced {
   display: none !important;
+}
+
+/* Ingest panel styling */
+#panel-ingest-simple {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+
+#panel-ingest-simple .ingest-simple-body {
+  padding: 8px 0;
+}
+
+#panel-ingest-simple .btn.full {
+  width: 100%;
+  margin: 4px 0;
+  text-align: center;
+}
+
+.status-mini {
+  text-align: center;
+  min-height: 16px;
 }
 
 .simple-mode .topbar .right {
