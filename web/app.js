@@ -1156,6 +1156,40 @@ if (citationsDbBtn) citationsDbBtn.addEventListener('click', async () => {
   } catch (e) { ToastManager.error('Lỗi export citations DB: ' + e); }
 });
 
+// ===== UI Mode Toggle (Simple/Advanced) =====
+const uiModeBtn = document.getElementById('btn-ui-mode');
+const UI_MODE_KEY = 'ollama-rag-ui-mode';
+
+function applyUIMode(isSimple) {
+  const root = document.querySelector('.ui-root');
+  if (isSimple) {
+    root.classList.add('simple-mode');
+    uiModeBtn.textContent = '🧭 Đơn giản';
+    uiModeBtn.setAttribute('aria-pressed', 'true');
+  } else {
+    root.classList.remove('simple-mode');
+    uiModeBtn.textContent = '🧰 Nâng cao';
+    uiModeBtn.setAttribute('aria-pressed', 'false');
+  }
+  localStorage.setItem(UI_MODE_KEY, isSimple ? 'simple' : 'advanced');
+}
+
+function toggleUIMode() {
+  const root = document.querySelector('.ui-root');
+  const isCurrentlySimple = root.classList.contains('simple-mode');
+  applyUIMode(!isCurrentlySimple);
+  ToastManager.info(isCurrentlySimple ? 'Chế độ Nâng cao đã bật' : 'Chế độ Đơn giản đã bật', 2000);
+}
+
+if (uiModeBtn) {
+  uiModeBtn.addEventListener('click', toggleUIMode);
+  // Load saved preference
+  const savedMode = localStorage.getItem(UI_MODE_KEY);
+  if (savedMode === 'simple') {
+    applyUIMode(true);
+  }
+}
+
 // init
 loadProvider().then(() => loadDbs().then(async () => { await loadChats(); await loadFilters(); await loadLogsInfo(); await loadAnalytics(); await loadLogsSummary(); }));
 

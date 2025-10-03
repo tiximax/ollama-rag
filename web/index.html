@@ -32,6 +32,7 @@
           </label>
 <button id="btn-upload" class="btn" title="Ingest các file đã chọn vào DB">📥 Ingest file</button>
 <button id="btn-reload" class="btn" title="Tải lại danh sách DB, tài liệu và hội thoại">🔄 Tải lại</button>
+<button id="btn-ui-mode" class="btn" title="Chuyển chế độ UI: Đơn giản / Nâng cao" aria-pressed="false">🧭 Đơn giản</button>
 <button id="btn-chat-export-db-json" class="btn" title="Xuất toàn bộ hội thoại của DB thành ZIP (JSON)">📦 Export DB (ZIP)</button>
           <span id="db-status" class="status"></span>
 <span id="backend-status" class="status" role="status" aria-live="polite"></span>
@@ -46,7 +47,7 @@
       <div class="workspace">
         <!-- Sidebar -->
         <aside class="sidebar">
-<div class="panel">
+<div class="panel" id="panel-docs">
             <div class="panel-title">📄 Tài liệu trong DB (doc_id): <button id="btn-docs-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="false" aria-controls="docs-body">▾</button></div>
             <div id="docs-body" hidden>
               <input id="doc-filter" class="control" type="text" placeholder="Lọc tài liệu (từ khóa)" title="Lọc theo từ khóa trong đường dẫn nguồn" />
@@ -71,7 +72,7 @@
             </div>
           </div>
 
-<div class="panel">
+<div class="panel" id="panel-stats">
             <div class="panel-title">📊 Thống kê nhanh <button id="btn-stats-toggle" class="btn" title="Thu gọn/mở rộng" aria-expanded="true" aria-controls="stats-body">▾</button></div>
             <div id="stats-body">
             <div class="stats-grid" aria-live="polite">
@@ -116,7 +117,7 @@
             <label class="opt" title="Hiển thị câu trả lời theo luồng"><input id="ck-stream" type="checkbox" /> Streaming</label>
           </div>
 
-<div class="panel">
+<div class="panel" id="panel-advanced">
             <div class="panel-title">Tùy chọn nâng cao <button id="btn-adv-reset" class="btn" title="Khôi phục thiết lập nâng cao về mặc định">Mặc định</button></div>
             <div class="adv-grid">
 <label class="opt" title="Phương pháp truy hồi: Vector (embedding), BM25 (từ khóa), Hybrid (kết hợp)">

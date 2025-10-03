@@ -187,3 +187,32 @@ footer { margin-top: 16px; color: #94a3b8; }
   .db-bar, .chat-bar, .ingest-bar { display: flex; flex-direction: column; gap: 8px; width: 100%; }
   .opt { flex-wrap: wrap; }
 }
+
+/* ===== Simple UI mode (progressive disclosure) ===== */
+.simple-mode #db-new-name,
+.simple-mode #btn-db-create,
+.simple-mode #btn-db-delete,
+.simple-mode #ingest-paths,
+.simple-mode #btn-ingest-paths,
+.simple-mode label.btn.file,
+.simple-mode #btn-upload,
+.simple-mode #btn-chat-export-db-json,
+.simple-mode #panel-docs,
+.simple-mode #panel-stats,
+.simple-mode #panel-advanced {
+  display: none !important;
+}
+
+.simple-mode .topbar .right {
+  gap: 6px;
+}
+
+.simple-mode .query-row .opt {
+  display: none;
+}
+
+/* Keep essential controls visible in simple mode */
+.simple-mode #txt-query,
+.simple-mode #btn-ask {
+  display: inline-flex !important;
+}
