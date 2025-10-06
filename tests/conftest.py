@@ -35,10 +35,12 @@ def mock_ollama_in_ci(monkeypatch):
     print("🤖 CI detected - Mocking Ollama service")
 
     # Mock embed method
-    def mock_embed(self, text: str, model: str = None) -> list:
+    def mock_embed(self, text, model: str = None) -> list:
         """Mock embedding generation with deterministic results"""
+        # Handle both string and list inputs
+        text_str = str(text) if not isinstance(text, str) else text
         # Use hash of text as seed for reproducible embeddings
-        np.random.seed(hash(text) % (2**32))
+        np.random.seed(hash(text_str) % (2**32))
         embedding = np.random.rand(768).tolist()
         return embedding
 
@@ -53,7 +55,6 @@ def mock_ollama_in_ci(monkeypatch):
         monkeypatch.setattr(OllamaClient, "embed", mock_embed)
         monkeypatch.setattr(OllamaClient, "generate", mock_generate)
         print("✅ OllamaClient mocked successfully (embed + generate)")
-        print("✅ OllamaClient mocked successfully")
     except ImportError as e:
         print(f"⚠️ Could not mock OllamaClient: {e}")
 
