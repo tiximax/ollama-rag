@@ -6,6 +6,7 @@ from collections.abc import Iterator
 
 import requests
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
 
 from app.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError
 
@@ -22,6 +23,12 @@ CONNECT_TIMEOUT = float(os.getenv("OLLAMA_CONNECT_TIMEOUT", "5"))
 READ_TIMEOUT = float(os.getenv("OLLAMA_READ_TIMEOUT", "180"))
 MAX_RETRIES = int(os.getenv("OLLAMA_MAX_RETRIES", "3"))
 BACKOFF_FACTOR = float(os.getenv("OLLAMA_RETRY_BACKOFF", "0.6"))
+
+# Connection pooling configuration - ổn định như kim cương! 💎
+POOL_CONNECTIONS = int(os.getenv("OLLAMA_POOL_CONNECTIONS", "10"))  # Number of pools per host
+POOL_MAXSIZE = int(os.getenv("OLLAMA_POOL_MAXSIZE", "20"))  # Max connections per pool
+POOL_BLOCK = os.getenv("OLLAMA_POOL_BLOCK", "false").lower() == "true"  # Block when pool full
+
 # Optional tuning for performance/CPU usage
 OPT_NUM_CTX = os.getenv("OLLAMA_NUM_CTX")
 OPT_NUM_THREAD = os.getenv("OLLAMA_NUM_THREAD")
@@ -38,7 +45,34 @@ class OllamaClient:
             enable_circuit_breaker: Enable circuit breaker for resilience (default: True)
         """
         self.base_url = base_url or OLLAMA_BASE_URL
+
+        # Connection pooling setup - reuse connections như rockstar! 🎸
         self.session = requests.Session()
+
+        # Configure HTTP adapter with connection pooling
+        adapter = HTTPAdapter(
+            pool_connections=POOL_CONNECTIONS,
+            pool_maxsize=POOL_MAXSIZE,
+            pool_block=POOL_BLOCK,
+            max_retries=0,  # We handle retries manually in _request()
+        )
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
+        # Connection pool metrics tracking
+        self._connection_stats = {
+            "total_requests": 0,
+            "pool_config": {
+                "pool_connections": POOL_CONNECTIONS,
+                "pool_maxsize": POOL_MAXSIZE,
+                "pool_block": POOL_BLOCK,
+            },
+        }
+
+        logger.info(
+            f"🔌 Connection pooling enabled: "
+            f"pool_connections={POOL_CONNECTIONS}, pool_maxsize={POOL_MAXSIZE}"
+        )
 
         # Circuit Breaker configuration - ổn định như kim cương! 💎
         if enable_circuit_breaker:
@@ -73,13 +107,16 @@ class OllamaClient:
         to = timeout or (CONNECT_TIMEOUT, READ_TIMEOUT)
         for attempt in range(MAX_RETRIES + 1):
             try:
+                # Track connection pool usage
+                self._connection_stats["total_requests"] += 1
+
                 resp = self.session.request(
                     method,
                     url,
                     json=json_body,
                     stream=stream,
                     timeout=to,
-                    headers={"Connection": "close"},
+                    # No "Connection: close" header - allow keep-alive! 🔄
                 )
                 # Retry on common transient status codes
                 if resp.status_code in (429, 502, 503, 504) or 500 <= resp.status_code < 600:
@@ -117,6 +154,22 @@ class OllamaClient:
         if self._circuit_breaker:
             return self._circuit_breaker.get_metrics()
         return {"circuit_breaker": "disabled"}
+
+    def get_connection_pool_metrics(self) -> dict:
+        """
+        Get connection pool metrics - xem connection reuse như thế nào! 🔌
+
+        Returns:
+            Dictionary with connection pool statistics and configuration
+        """
+        return {
+            "total_requests": self._connection_stats["total_requests"],
+            "pool_config": self._connection_stats["pool_config"],
+            "adapter_info": {
+                "http_adapter": str(self.session.get_adapter("http://")),
+                "https_adapter": str(self.session.get_adapter("https://")),
+            },
+        }
 
     def health_check(self) -> bool:
         """Check if Ollama service is healthy."""
