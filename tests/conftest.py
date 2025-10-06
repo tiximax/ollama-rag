@@ -47,18 +47,12 @@ def mock_ollama_in_ci(monkeypatch):
         """Mock text generation"""
         return f"Generated response for prompt: {prompt[:50]}..."
 
-    # Mock health check
-    def mock_is_healthy(self) -> bool:
-        """Mock health check - always healthy in CI"""
-        return True
-
     # Apply mocks to OllamaClient
     try:
         from app.ollama_client import OllamaClient
-
         monkeypatch.setattr(OllamaClient, "embed", mock_embed)
         monkeypatch.setattr(OllamaClient, "generate", mock_generate)
-        monkeypatch.setattr(OllamaClient, "is_healthy", mock_is_healthy)
+        print("✅ OllamaClient mocked successfully (embed + generate)")
         print("✅ OllamaClient mocked successfully")
     except ImportError as e:
         print(f"⚠️ Could not mock OllamaClient: {e}")
