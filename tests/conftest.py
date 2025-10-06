@@ -6,6 +6,7 @@ to allow tests to run without requiring actual Ollama installation.
 """
 
 import os
+from functools import wraps
 from unittest.mock import patch
 
 import numpy as np
@@ -46,7 +47,7 @@ def mock_ollama_in_ci(monkeypatch):
                 embedding = np.random.rand(768).tolist()
                 embeddings.append(embedding)
             return embeddings
-        
+
         # Handle single text
         text_str = str(text) if not isinstance(text, str) else text
         np.random.seed(hash(text_str) % (2**32))
@@ -61,6 +62,7 @@ def mock_ollama_in_ci(monkeypatch):
     # Apply mocks to OllamaClient
     try:
         from app.ollama_client import OllamaClient
+
         monkeypatch.setattr(OllamaClient, "embed", mock_embed)
         monkeypatch.setattr(OllamaClient, "generate", mock_generate)
         print("✅ OllamaClient mocked successfully (embed + generate)")
@@ -102,3 +104,43 @@ def sample_documents():
         {"id": "2", "content": "Sample document 2", "source": "test"},
         {"id": "3", "content": "Sample document 3", "source": "test"},
     ]
+
+
+@pytest.fixture
+def mock_lru_cache(monkeypatch):
+    """
+    Mock functools.lru_cache for testing without actual caching.
+
+    This fixture replaces lru_cache with a simple pass-through decorator
+    that preserves function metadata using @wraps.
+
+    Useful for testing code that uses lru_cache without side effects.
+    """
+
+    def mock_cache(maxsize=128, typed=False):
+        """Mock lru_cache decorator"""
+
+        def decorator(func):
+            @wraps(func)  # Preserve function metadata
+            def wrapper(*args, **kwargs):
+                return func(*args, **kwargs)
+
+            # Add cache_info and cache_clear methods to match lru_cache API
+            def cache_info():
+                # Return a mock CacheInfo object
+                CacheInfo = type('CacheInfo', (), {})
+                info = CacheInfo()
+                info.hits = 0
+                info.misses = 0
+                info.maxsize = maxsize
+                info.currsize = 0
+                return info
+
+            wrapper.cache_info = cache_info
+            wrapper.cache_clear = lambda: None
+            return wrapper
+
+        return decorator
+
+    monkeypatch.setattr("functools.lru_cache", mock_cache)
+    return mock_cache
