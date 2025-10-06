@@ -1,12 +1,18 @@
 import json
+import logging
 import os
 import time
 from collections.abc import Iterator
 
 import requests
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
+
+from app.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1:8b")
@@ -17,6 +23,12 @@ CONNECT_TIMEOUT = float(os.getenv("OLLAMA_CONNECT_TIMEOUT", "5"))
 READ_TIMEOUT = float(os.getenv("OLLAMA_READ_TIMEOUT", "180"))
 MAX_RETRIES = int(os.getenv("OLLAMA_MAX_RETRIES", "3"))
 BACKOFF_FACTOR = float(os.getenv("OLLAMA_RETRY_BACKOFF", "0.6"))
+
+# Connection pooling configuration - ổn định như kim cương! 💎
+POOL_CONNECTIONS = int(os.getenv("OLLAMA_POOL_CONNECTIONS", "10"))  # Number of pools per host
+POOL_MAXSIZE = int(os.getenv("OLLAMA_POOL_MAXSIZE", "20"))  # Max connections per pool
+POOL_BLOCK = os.getenv("OLLAMA_POOL_BLOCK", "false").lower() == "true"  # Block when pool full
+
 # Optional tuning for performance/CPU usage
 OPT_NUM_CTX = os.getenv("OLLAMA_NUM_CTX")
 OPT_NUM_THREAD = os.getenv("OLLAMA_NUM_THREAD")
@@ -24,9 +36,62 @@ OPT_NUM_GPU = os.getenv("OLLAMA_NUM_GPU")
 
 
 class OllamaClient:
-    def __init__(self, base_url: str | None = None):
+    def __init__(self, base_url: str | None = None, enable_circuit_breaker: bool = True):
+        """
+        Initialize Ollama client với Circuit Breaker protection! 🛡️
+
+        Args:
+            base_url: Ollama service URL
+            enable_circuit_breaker: Enable circuit breaker for resilience (default: True)
+        """
         self.base_url = base_url or OLLAMA_BASE_URL
+
+        # Connection pooling setup - reuse connections như rockstar! 🎸
         self.session = requests.Session()
+
+        # Configure HTTP adapter with connection pooling
+        adapter = HTTPAdapter(
+            pool_connections=POOL_CONNECTIONS,
+            pool_maxsize=POOL_MAXSIZE,
+            pool_block=POOL_BLOCK,
+            max_retries=0,  # We handle retries manually in _request()
+        )
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
+        # Connection pool metrics tracking
+        self._connection_stats = {
+            "total_requests": 0,
+            "pool_config": {
+                "pool_connections": POOL_CONNECTIONS,
+                "pool_maxsize": POOL_MAXSIZE,
+                "pool_block": POOL_BLOCK,
+            },
+        }
+
+        logger.info(
+            f"🔌 Connection pooling enabled: "
+            f"pool_connections={POOL_CONNECTIONS}, pool_maxsize={POOL_MAXSIZE}"
+        )
+
+        # Circuit Breaker configuration - ổn định như kim cương! 💎
+        if enable_circuit_breaker:
+            circuit_config = CircuitBreakerConfig(
+                failure_threshold=5,  # Open after 5 consecutive failures
+                timeout=30.0,  # Try recovery after 30s
+                success_threshold=2,  # Close after 2 successful calls
+                window_size=10,
+                half_open_max_calls=3,
+            )
+            self._circuit_breaker = CircuitBreaker(
+                name="ollama_client",
+                config=circuit_config,
+                on_state_change=self._on_circuit_state_change,
+            )
+            logger.info("🔌 Circuit Breaker enabled for Ollama client")
+        else:
+            self._circuit_breaker = None
+            logger.info("⚠️ Circuit Breaker disabled for Ollama client")
 
     def _request(
         self,
@@ -42,13 +107,16 @@ class OllamaClient:
         to = timeout or (CONNECT_TIMEOUT, READ_TIMEOUT)
         for attempt in range(MAX_RETRIES + 1):
             try:
+                # Track connection pool usage
+                self._connection_stats["total_requests"] += 1
+
                 resp = self.session.request(
                     method,
                     url,
                     json=json_body,
                     stream=stream,
                     timeout=to,
-                    headers={"Connection": "close"},
+                    # No "Connection: close" header - allow keep-alive! 🔄
                 )
                 # Retry on common transient status codes
                 if resp.status_code in (429, 502, 503, 504) or 500 <= resp.status_code < 600:
@@ -75,6 +143,34 @@ class OllamaClient:
             raise last_exc
         raise RuntimeError("Request failed without exception")
 
+    def _on_circuit_state_change(self, old_state, new_state):
+        """Callback when circuit breaker state changes - logging như pro! 📢"""
+        logger.warning(
+            f"🔄 Ollama Circuit Breaker state changed: {old_state.value} → {new_state.value}"
+        )
+
+    def get_circuit_metrics(self) -> dict:
+        """Get circuit breaker metrics - for monitoring! 📊"""
+        if self._circuit_breaker:
+            return self._circuit_breaker.get_metrics()
+        return {"circuit_breaker": "disabled"}
+
+    def get_connection_pool_metrics(self) -> dict:
+        """
+        Get connection pool metrics - xem connection reuse như thế nào! 🔌
+
+        Returns:
+            Dictionary with connection pool statistics and configuration
+        """
+        return {
+            "total_requests": self._connection_stats["total_requests"],
+            "pool_config": self._connection_stats["pool_config"],
+            "adapter_info": {
+                "http_adapter": str(self.session.get_adapter("http://")),
+                "https_adapter": str(self.session.get_adapter("https://")),
+            },
+        }
+
     def health_check(self) -> bool:
         """Check if Ollama service is healthy."""
         try:
@@ -84,6 +180,23 @@ class OllamaClient:
             return False
 
     def embed(self, texts: list[str]) -> list[list[float]]:
+        """Generate embeddings với Circuit Breaker protection! 🛡️"""
+        if self._circuit_breaker:
+            try:
+                return self._circuit_breaker.call(self._embed_impl, texts)
+            except CircuitBreakerError as e:
+                logger.error(
+                    f"🚨 Circuit breaker OPEN for embed: {e}. "
+                    f"Consecutive failures: {e.stats.consecutive_failures if e.stats else 'N/A'}"
+                )
+                # Fallback: Return empty embeddings để không crash toàn bộ
+                logger.warning(f"⚠️ Returning empty embeddings as fallback for {len(texts)} texts")
+                return [[0.0] * 768 for _ in texts]  # Default embedding dimension
+        else:
+            return self._embed_impl(texts)
+
+    def _embed_impl(self, texts: list[str]) -> list[list[float]]:
+        """Internal implementation of embed - wrapped by circuit breaker."""
         embeddings: list[list[float]] = []
         for t in texts:
             resp = self._request(
@@ -115,6 +228,25 @@ class OllamaClient:
         return opts
 
     def generate(self, prompt: str, system: str | None = None) -> str:
+        """Generate text với Circuit Breaker protection! 🛡️"""
+        if self._circuit_breaker:
+            try:
+                return self._circuit_breaker.call(self._generate_impl, prompt, system)
+            except CircuitBreakerError as e:
+                logger.error(
+                    f"🚨 Circuit breaker OPEN for generate: {e}. "
+                    f"Consecutive failures: {e.stats.consecutive_failures if e.stats else 'N/A'}"
+                )
+                # Fallback: Return helpful error message
+                return (
+                    "[Service temporarily unavailable. The AI service is experiencing issues. "
+                    "Please try again in a moment.]"
+                )
+        else:
+            return self._generate_impl(prompt, system)
+
+    def _generate_impl(self, prompt: str, system: str | None = None) -> str:
+        """Internal implementation of generate - wrapped by circuit breaker."""
         payload = {
             "model": LLM_MODEL,
             "prompt": prompt if system is None else f"[SYSTEM]\n{system}\n[/SYSTEM]\n{prompt}",

@@ -1,0 +1,30 @@
+{
+  "test_info": {
+    "test_name": "baseline_measurement",
+    "num_requests": 100,
+    "concurrent_requests": 10,
+    "base_url": "http://localhost:8001"
+  },
+  "metrics": {
+    "timestamp": "2025-10-06T14:18:12.909422",
+    "total_requests": 100,
+    "successful_requests": 24,
+    "error_count": 76,
+    "error_rate_percent": 76.0,
+    "throughput_rps": 4.79,
+    "response_times_ms": {
+      "p50": 2110.43,
+      "p95": 2132.91,
+      "p99": 2134.88,
+      "mean": 2106.98,
+      "min": 2062.3,
+      "max": 2133.4
+    },
+    "duration_seconds": 20.88
+  },
+  "resource_usage": {
+    "cpu_percent": 0.6,
+    "memory_percent": 15.5,
+    "memory_available_mb": 110634.42
+  }
+}

@@ -8,11 +8,9 @@ Test này verify rằng resources được cleanup properly bằng cách:
 """
 
 import gc
-import os
 import shutil
 import tempfile
 import time
-from pathlib import Path
 
 import psutil
 
@@ -95,7 +93,9 @@ def test_rag_engine_no_memory_leak():
         # Verdict
         THRESHOLD_MB = 50.0  # 50MB threshold for memory growth
         if memory_growth < THRESHOLD_MB:
-            print(f"✅ PASS: Memory growth ({memory_growth:.2f} MB) < threshold ({THRESHOLD_MB} MB)")
+            print(
+                f"✅ PASS: Memory growth ({memory_growth:.2f} MB) < threshold ({THRESHOLD_MB} MB)"
+            )
             print("🎉 No significant memory leaks detected!")
             return True
         else:
@@ -143,9 +143,7 @@ def test_file_handles_cleanup():
         chat_store = ChatStore(temp_dir)
         for i in range(20):
             chat = chat_store.create("test_db", f"Chat {i}")
-            chat_store.append_pair(
-                "test_db", chat["id"], f"Question {i}", f"Answer {i}"
-            )
+            chat_store.append_pair("test_db", chat["id"], f"Question {i}", f"Answer {i}")
             chat_store.get("test_db", chat["id"])
 
         # Test FeedbackStore
@@ -172,9 +170,7 @@ def test_file_handles_cleanup():
                 print("✅ PASS: No file handle leaks detected!")
                 return True
             else:
-                print(
-                    f"⚠️  WARNING: File descriptor growth ({file_growth}) might indicate leak"
-                )
+                print(f"⚠️  WARNING: File descriptor growth ({file_growth}) might indicate leak")
                 return False
         else:
             print("ℹ️  File descriptor counting not available on this platform")
