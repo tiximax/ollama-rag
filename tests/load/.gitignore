@@ -1,0 +1,31 @@
+# Load Test Reports and Generated Files
+reports/*.html
+reports/*.csv
+reports/*.json
+reports/*.log
+
+# Locust specific
+*.swp
+*.swo
+*~
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keep reports directory structure
+!reports/.gitkeep
