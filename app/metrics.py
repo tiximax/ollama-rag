@@ -73,16 +73,47 @@ ollama_health = Gauge('ollama_rag_ollama_healthy', 'Ollama service health (1=hea
 
 # ===== Semantic Cache Metrics =====
 semcache_hits = Counter(
-    'ollama_rag_semcache_hits_total', 'Total semantic cache hits', ['type']  # type: exact|semantic
+    'ollama_rag_semcache_hits_total',
+    'Total semantic cache hits',
+    ['type'],  # type: exact|semantic
 )
-semcache_misses = Counter(
-    'ollama_rag_semcache_misses_total', 'Total semantic cache misses'
-)
-semcache_size = Gauge(
-    'ollama_rag_semcache_size', 'Semantic cache current size'
-)
+semcache_misses = Counter('ollama_rag_semcache_misses_total', 'Total semantic cache misses')
+semcache_size = Gauge('ollama_rag_semcache_size', 'Semantic cache current size')
 semcache_fill_ratio = Gauge(
     'ollama_rag_semcache_fill_ratio', 'Semantic cache fill ratio (size/max_size)'
+)
+
+# ===== Circuit Breaker Metrics =====
+# Metrics siêu thông minh cho Circuit Breaker như siêu anh hùng! 🦸‍♂️
+
+circuit_breaker_state = Gauge(
+    'ollama_rag_circuit_breaker_state',
+    'Current circuit breaker state (0=CLOSED, 1=OPEN, 2=HALF_OPEN)',
+    ['breaker_name'],
+)
+
+circuit_breaker_calls_total = Counter(
+    'ollama_rag_circuit_breaker_calls_total',
+    'Total calls through circuit breaker',
+    ['breaker_name', 'status'],  # status: success|failure|rejected
+)
+
+circuit_breaker_state_transitions = Counter(
+    'ollama_rag_circuit_breaker_transitions_total',
+    'Total circuit breaker state transitions',
+    ['breaker_name', 'from_state', 'to_state'],
+)
+
+circuit_breaker_consecutive_failures = Gauge(
+    'ollama_rag_circuit_breaker_consecutive_failures',
+    'Current consecutive failure count',
+    ['breaker_name'],
+)
+
+circuit_breaker_last_state_change = Gauge(
+    'ollama_rag_circuit_breaker_last_state_change_timestamp',
+    'Timestamp of last state change (Unix time)',
+    ['breaker_name'],
 )
 
 # ===== System Info =====
@@ -163,6 +194,7 @@ def update_ollama_health(is_healthy: bool):
 
 # ===== Semantic Cache Helpers =====
 
+
 def semcache_hit(hit_type: str) -> None:
     """Increment semantic cache hit counter.
 
@@ -196,3 +228,74 @@ def update_semcache_size(size: int, max_size: int) -> None:
 def set_app_info(version: str, db_type: str = "chromadb"):
     """Set application info."""
     app_info.info({'version': version, 'db_type': db_type, 'app_name': 'ollama-rag'})
+
+
+# ===== Circuit Breaker Helpers =====
+
+
+def record_circuit_breaker_call(
+    breaker_name: str,
+    status: str,  # 'success' | 'failure' | 'rejected'
+) -> None:
+    """Record circuit breaker call - tracking như rockstar! 🎸
+
+    Args:
+        breaker_name: Tên của circuit breaker
+        status: 'success', 'failure', hoặc 'rejected'
+    """
+    try:
+        circuit_breaker_calls_total.labels(breaker_name=breaker_name, status=status).inc()
+    except Exception:
+        pass  # Never crash on metrics!
+
+
+def update_circuit_breaker_state(
+    breaker_name: str,
+    state: str,  # 'closed' | 'open' | 'half_open'
+) -> None:
+    """Update circuit breaker state - real-time như chớp nát! ⚡
+
+    Args:
+        breaker_name: Tên của circuit breaker
+        state: 'closed', 'open', hoặc 'half_open'
+    """
+    try:
+        state_mapping = {'closed': 0, 'open': 1, 'half_open': 2}
+        circuit_breaker_state.labels(breaker_name=breaker_name).set(state_mapping.get(state, 0))
+    except Exception:
+        pass
+
+
+def record_circuit_breaker_transition(breaker_name: str, from_state: str, to_state: str) -> None:
+    """Record state transition - theo dõi chuyển đổi! 🔄
+
+    Args:
+        breaker_name: Tên của circuit breaker
+        from_state: State ban đầu
+        to_state: State mới
+    """
+    try:
+        import time
+
+        circuit_breaker_state_transitions.labels(
+            breaker_name=breaker_name, from_state=from_state, to_state=to_state
+        ).inc()
+        # Update timestamp
+        circuit_breaker_last_state_change.labels(breaker_name=breaker_name).set(time.time())
+    except Exception:
+        pass
+
+
+def update_circuit_breaker_failures(breaker_name: str, consecutive_failures: int) -> None:
+    """Update consecutive failures count - đếm lỗi chính xác! 🎯
+
+    Args:
+        breaker_name: Tên của circuit breaker
+        consecutive_failures: Số lỗi liên tiếp hiện tại
+    """
+    try:
+        circuit_breaker_consecutive_failures.labels(breaker_name=breaker_name).set(
+            consecutive_failures
+        )
+    except Exception:
+        pass

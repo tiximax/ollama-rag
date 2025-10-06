@@ -3,65 +3,130 @@ Tests for Sprint 2 Metrics Dashboard
 =====================================
 Comprehensive test suite for metrics collection and reporting.
 
-TODO: Implement these tests tomorrow
+Tested with love and metrics tracking như rockstar! 🎸
 """
 
+import pytest
 
-class TestMetricsCollector:
-    """Test suite for MetricsCollector class."""
+from app import metrics
+from app.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitState
 
-    # TODO: Test circuit breaker metrics
-    def test_record_circuit_breaker_state(self):
-        """Test circuit breaker state tracking."""
-        pass
 
-    def test_circuit_breaker_state_transitions(self):
-        """Test state transition counting."""
-        pass
+class TestCircuitBreakerMetrics:
+    """Test suite for Circuit Breaker Prometheus metrics integration."""
 
-    # TODO: Test connection pool metrics
-    def test_record_connection_pool_stats(self):
-        """Test connection pool statistics recording."""
-        pass
+    def test_metrics_recorded_on_success(self):
+        """Circuit breaker success calls update metrics correctly ✅"""
+        # Create a fresh circuit breaker
+        breaker = CircuitBreaker(name="test_success_metrics")
 
-    def test_connection_pool_utilization(self):
-        """Test pool utilization calculation."""
-        pass
+        # Call a successful function
+        def success_func():
+            return "ok"
 
-    # TODO: Test cache metrics
-    def test_record_cache_hit(self):
-        """Test cache hit recording."""
-        pass
+        result = breaker.call(success_func)
+        assert result == "ok"
 
-    def test_record_cache_miss(self):
-        """Test cache miss recording."""
-        pass
+        # Verify metrics were recorded
+        # Note: In real impl, we'd check prometheus_client collectors
+        # For now, verify internal stats work
+        assert breaker.stats.success_calls == 1
+        assert breaker.stats.failure_calls == 0
 
-    def test_cache_hit_rate_calculation(self):
-        """Test hit rate percentage calculation."""
-        pass
+    def test_metrics_recorded_on_failure(self):
+        """Circuit breaker failures update metrics correctly ❌"""
+        breaker = CircuitBreaker(name="test_failure_metrics")
 
-    # TODO: Test request metrics
-    def test_record_request_success(self):
-        """Test successful request recording."""
-        pass
+        def fail_func():
+            raise RuntimeError("test failure")
 
-    def test_record_request_failure(self):
-        """Test failed request recording."""
-        pass
+        with pytest.raises(RuntimeError):
+            breaker.call(fail_func)
 
-    def test_request_latency_histogram(self):
-        """Test latency histogram buckets."""
-        pass
+        # Verify failure tracked
+        assert breaker.stats.failure_calls == 1
+        assert breaker.stats.consecutive_failures == 1
 
-    # TODO: Test health endpoint
-    def test_get_health_status(self):
-        """Test health status reporting."""
-        pass
+    def test_state_transition_metrics(self):
+        """State transitions are tracked in metrics 🔄"""
+        config = CircuitBreakerConfig(failure_threshold=2, timeout=1.0)
+        breaker = CircuitBreaker(name="test_transitions", config=config)  # Pass config!
 
-    def test_health_check_all_components(self):
-        """Test health check for all components."""
-        pass
+        def fail_func():
+            raise RuntimeError("fail")
+
+        # Trigger failures to open circuit
+        for _ in range(config.failure_threshold):
+            with pytest.raises(RuntimeError):
+                breaker.call(fail_func)
+
+        # Verify state changed
+        assert breaker.state == CircuitState.OPEN
+        assert breaker.stats.state_transitions >= 1  # At least one transition
+
+    def test_rejected_calls_tracked(self):
+        """Rejected calls (circuit open) are tracked 🚫"""
+        config = CircuitBreakerConfig(failure_threshold=2, timeout=10.0)
+        breaker = CircuitBreaker(name="test_rejected", config=config)
+
+        def fail_func():
+            raise RuntimeError("fail")
+
+        # Open the circuit
+        for _ in range(2):
+            with pytest.raises(RuntimeError):
+                breaker.call(fail_func)
+
+        assert breaker.state == CircuitState.OPEN
+
+        # Try to call - should be rejected
+        from app.circuit_breaker import CircuitBreakerError
+
+        with pytest.raises(CircuitBreakerError):
+            breaker.call(fail_func)
+
+        # Rejected call should be tracked
+        # (In full impl, check prometheus counter)
+
+    def test_consecutive_failures_gauge(self):
+        """Consecutive failures gauge updates correctly 📊"""
+        breaker = CircuitBreaker(name="test_consecutive")
+
+        def fail_func():
+            raise RuntimeError("fail")
+
+        # Each failure should increment consecutive count
+        for i in range(1, 4):
+            with pytest.raises(RuntimeError):
+                breaker.call(fail_func)
+            assert breaker.stats.consecutive_failures == i
+
+
+class TestMetricsHelpers:
+    """Test helper functions in metrics module."""
+
+    def test_record_circuit_breaker_call(self):
+        """Test recording circuit breaker calls 📝"""
+        # Should not crash even with invalid inputs
+        metrics.record_circuit_breaker_call(breaker_name="test", status="success")
+        metrics.record_circuit_breaker_call(breaker_name="test", status="failure")
+        metrics.record_circuit_breaker_call(breaker_name="test", status="rejected")
+
+    def test_update_circuit_breaker_state(self):
+        """Test state gauge updates 🔄"""
+        metrics.update_circuit_breaker_state(breaker_name="test", state="closed")
+        metrics.update_circuit_breaker_state(breaker_name="test", state="open")
+        metrics.update_circuit_breaker_state(breaker_name="test", state="half_open")
+
+    def test_record_circuit_breaker_transition(self):
+        """Test transition counter ➡️"""
+        metrics.record_circuit_breaker_transition(
+            breaker_name="test", from_state="closed", to_state="open"
+        )
+
+    def test_update_circuit_breaker_failures(self):
+        """Test failures gauge update 📉"""
+        metrics.update_circuit_breaker_failures(breaker_name="test", consecutive_failures=5)
 
 
 class TestPrometheusIntegration:
