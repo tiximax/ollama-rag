@@ -4,3 +4,22 @@ isort==5.13.2
 pre-commit==3.7.1
 pytest==8.3.3
 pytest-cov==5.0.0
+
+# Sprint 1 Optimization Dependencies
+# Circuit Breaker & Retry Logic
+circuitbreaker==1.4.0
+tenacity==8.2.3
+
+# Async HTTP Client
+aiohttp==3.9.1
+
+# Async Testing
+pytest-asyncio==0.21.1
+
+# Load Testing & Benchmarking
+locust==2.17.0
+pytest-benchmark==4.0.0
+
+# Profiling
+py-spy==0.3.14
+memory-profiler==0.61.0
