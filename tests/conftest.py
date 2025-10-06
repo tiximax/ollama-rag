@@ -35,11 +35,20 @@ def mock_ollama_in_ci(monkeypatch):
     print("🤖 CI detected - Mocking Ollama service")
 
     # Mock embed method
-    def mock_embed(self, text, model: str = None) -> list:
+    def mock_embed(self, text, model: str = None):
         """Mock embedding generation with deterministic results"""
-        # Handle both string and list inputs
+        # Handle batch operations (list of texts)
+        if isinstance(text, list):
+            embeddings = []
+            for t in text:
+                text_str = str(t)
+                np.random.seed(hash(text_str) % (2**32))
+                embedding = np.random.rand(768).tolist()
+                embeddings.append(embedding)
+            return embeddings
+        
+        # Handle single text
         text_str = str(text) if not isinstance(text, str) else text
-        # Use hash of text as seed for reproducible embeddings
         np.random.seed(hash(text_str) % (2**32))
         embedding = np.random.rand(768).tolist()
         return embedding
