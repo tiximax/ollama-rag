@@ -26,6 +26,14 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, TypeVar
 
+# Import metrics helpers - monitoring như siêu anh hùng! 🦸‍♂️
+try:
+    from app import metrics
+
+    METRICS_ENABLED = True
+except ImportError:
+    METRICS_ENABLED = False
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -168,6 +176,16 @@ class CircuitBreaker:
         self._state = new_state
         self._stats.state_transitions += 1
 
+        # Update Prometheus metrics - real-time monitoring! 📊
+        if METRICS_ENABLED:
+            try:
+                metrics.record_circuit_breaker_transition(
+                    breaker_name=self.name, from_state=old_state.value, to_state=new_state.value
+                )
+                metrics.update_circuit_breaker_state(breaker_name=self.name, state=new_state.value)
+            except Exception as e:
+                logger.debug(f"Metrics update failed (non-critical): {e}")
+
         # Update state-specific tracking
         if new_state == CircuitState.OPEN:
             self._opened_at = time.time()
@@ -220,6 +238,16 @@ class CircuitBreaker:
             self._stats.consecutive_failures = 0
             self._stats.last_success_time = time.time()
 
+            # Update Prometheus metrics - success tracking! ✅
+            if METRICS_ENABLED:
+                try:
+                    metrics.record_circuit_breaker_call(breaker_name=self.name, status='success')
+                    metrics.update_circuit_breaker_failures(
+                        breaker_name=self.name, consecutive_failures=0
+                    )
+                except Exception as e:
+                    logger.debug(f"Metrics update failed (non-critical): {e}")
+
             if self._state == CircuitState.HALF_OPEN:
                 # Success in HALF_OPEN → check if can close
                 if self._stats.consecutive_successes >= self.config.success_threshold:
@@ -238,6 +266,17 @@ class CircuitBreaker:
             self._stats.consecutive_failures += 1
             self._stats.consecutive_successes = 0
             self._stats.last_failure_time = current_time
+
+            # Update Prometheus metrics - failure tracking! ❌
+            if METRICS_ENABLED:
+                try:
+                    metrics.record_circuit_breaker_call(breaker_name=self.name, status='failure')
+                    metrics.update_circuit_breaker_failures(
+                        breaker_name=self.name,
+                        consecutive_failures=self._stats.consecutive_failures,
+                    )
+                except Exception as e:
+                    logger.debug(f"Metrics update failed (non-critical): {e}")
 
             # Add to sliding window
             self._failure_window.append(current_time)
@@ -271,6 +310,14 @@ class CircuitBreaker:
 
             # Check if circuit is open
             if self._state == CircuitState.OPEN:
+                # Record rejected call in metrics 🚫
+                if METRICS_ENABLED:
+                    try:
+                        metrics.record_circuit_breaker_call(
+                            breaker_name=self.name, status='rejected'
+                        )
+                    except Exception:
+                        pass
                 raise CircuitBreakerError(
                     f"Circuit '{self.name}' is OPEN (will retry after timeout)",
                     stats=self.stats,
@@ -279,6 +326,14 @@ class CircuitBreaker:
             # Check half-open call limit
             if self._state == CircuitState.HALF_OPEN:
                 if self._half_open_calls >= self.config.half_open_max_calls:
+                    # Record rejected call in metrics 🚫
+                    if METRICS_ENABLED:
+                        try:
+                            metrics.record_circuit_breaker_call(
+                                breaker_name=self.name, status='rejected'
+                            )
+                        except Exception:
+                            pass
                     raise CircuitBreakerError(
                         f"Circuit '{self.name}' is HALF_OPEN and max calls reached",
                         stats=self.stats,
