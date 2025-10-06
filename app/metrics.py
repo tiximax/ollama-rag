@@ -116,6 +116,21 @@ circuit_breaker_last_state_change = Gauge(
     ['breaker_name'],
 )
 
+# ===== Connection Pool Metrics =====
+# Connection pool metrics như rockstar! 🔌
+
+connection_pool_requests_total = Counter(
+    'ollama_rag_connection_pool_requests_total',
+    'Total HTTP requests through connection pool',
+    ['client_name'],
+)
+
+connection_pool_size = Gauge(
+    'ollama_rag_connection_pool_size',
+    'Configured connection pool size',
+    ['client_name', 'pool_type'],  # pool_type: 'connections' or 'maxsize'
+)
+
 # ===== System Info =====
 app_info = Info('ollama_rag_app', 'Application information')
 
@@ -297,5 +312,39 @@ def update_circuit_breaker_failures(breaker_name: str, consecutive_failures: int
         circuit_breaker_consecutive_failures.labels(breaker_name=breaker_name).set(
             consecutive_failures
         )
+    except Exception:
+        pass
+
+
+# ===== Connection Pool Helpers =====
+
+
+def record_connection_pool_request(client_name: str) -> None:
+    """Record connection pool request - tracking requests! 📊
+
+    Args:
+        client_name: Name of the client (e.g., 'ollama_client')
+    """
+    try:
+        connection_pool_requests_total.labels(client_name=client_name).inc()
+    except Exception:
+        pass
+
+
+def update_connection_pool_config(
+    client_name: str, pool_connections: int, pool_maxsize: int
+) -> None:
+    """Update connection pool configuration metrics - cấu hình pool! 🔌
+
+    Args:
+        client_name: Name of the client
+        pool_connections: Number of connection pools
+        pool_maxsize: Max connections per pool
+    """
+    try:
+        connection_pool_size.labels(client_name=client_name, pool_type='connections').set(
+            pool_connections
+        )
+        connection_pool_size.labels(client_name=client_name, pool_type='maxsize').set(pool_maxsize)
     except Exception:
         pass

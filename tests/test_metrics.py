@@ -129,7 +129,22 @@ class TestMetricsHelpers:
         metrics.update_circuit_breaker_failures(breaker_name="test", consecutive_failures=5)
 
 
-class TestPrometheusIntegration:
+class TestConnectionPoolMetrics:
+    """Test connection pool metrics integration."""
+
+    def test_record_connection_pool_request(self):
+        """Connection pool requests are tracked 🔌"""
+        # Should not crash
+        metrics.record_connection_pool_request(client_name="test_client")
+        metrics.record_connection_pool_request(client_name="test_client")
+
+    def test_update_connection_pool_config(self):
+        """Connection pool config is tracked ⚙️"""
+        # Should not crash
+        metrics.update_connection_pool_config(
+            client_name="test_client", pool_connections=10, pool_maxsize=20
+        )
+
     """Test Prometheus metrics export."""
 
     # TODO: Test Prometheus format

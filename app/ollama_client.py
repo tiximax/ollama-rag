@@ -10,6 +10,14 @@ from requests.adapters import HTTPAdapter
 
 from app.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError
 
+# Import metrics helpers - monitoring connection pool! 🔌
+try:
+    from app import metrics
+
+    METRICS_ENABLED = True
+except ImportError:
+    METRICS_ENABLED = False
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -74,6 +82,17 @@ class OllamaClient:
             f"pool_connections={POOL_CONNECTIONS}, pool_maxsize={POOL_MAXSIZE}"
         )
 
+        # Update connection pool metrics - expose config! 📊
+        if METRICS_ENABLED:
+            try:
+                metrics.update_connection_pool_config(
+                    client_name="ollama_client",
+                    pool_connections=POOL_CONNECTIONS,
+                    pool_maxsize=POOL_MAXSIZE,
+                )
+            except Exception as e:
+                logger.debug(f"Metrics update failed (non-critical): {e}")
+
         # Circuit Breaker configuration - ổn định như kim cương! 💎
         if enable_circuit_breaker:
             circuit_config = CircuitBreakerConfig(
@@ -109,6 +128,13 @@ class OllamaClient:
             try:
                 # Track connection pool usage
                 self._connection_stats["total_requests"] += 1
+
+                # Record request in Prometheus metrics - tracking! 📊
+                if METRICS_ENABLED:
+                    try:
+                        metrics.record_connection_pool_request(client_name="ollama_client")
+                    except Exception:
+                        pass
 
                 resp = self.session.request(
                     method,
