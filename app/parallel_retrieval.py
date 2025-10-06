@@ -72,7 +72,7 @@ class ParallelRetriever:
     async def retrieve_parallel(
         self,
         query: str,
-        methods: list[str] = ["vector", "bm25"],
+        methods: list[str] | None = None,
         top_k: int = 10,
         **kwargs,
     ) -> dict[str, RetrievalResult]:
@@ -89,6 +89,10 @@ class ParallelRetriever:
         Returns:
             Dict mapping method name to RetrievalResult
         """
+        # Default methods if not specified
+        if methods is None:
+            methods = ["vector", "bm25"]
+
         # Create tasks for each method
         tasks = []
         for method in methods:

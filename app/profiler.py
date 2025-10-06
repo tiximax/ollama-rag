@@ -90,8 +90,6 @@ class ProfileResult:
     def _generate_recommendations(self) -> None:
         """Generate performance recommendations based on profiling."""
         for step in self.steps:
-            pct = (step.duration_ms / self.total_duration_ms) * 100
-
             # Embedding too slow
             if "embedding" in step.name.lower() and step.duration_ms > 500:
                 self.recommendations.append(
