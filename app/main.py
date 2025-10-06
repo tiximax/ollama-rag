@@ -633,6 +633,48 @@ def readiness_probe():
     }
 
 
+@app.get("/api/circuit-breaker/metrics", tags=["Monitoring"])
+def get_circuit_breaker_metrics():
+    """🛡️ Circuit Breaker metrics endpoint - Monitor resilience protection.
+
+    Returns comprehensive Circuit Breaker metrics including:
+    - Current state (CLOSED, OPEN, HALF_OPEN)
+    - Success/failure rates and counts
+    - State transition history
+    - Last failure/success timestamps
+    - Configuration settings
+
+    Returns:
+        Circuit Breaker metrics for all protected services (Ollama client)
+    """
+    try:
+        # Get Ollama client circuit breaker metrics
+        ollama_cb_metrics = engine.ollama.get_circuit_metrics()
+
+        # Add timestamp and API metadata
+        response = {
+            "timestamp": time.time(),
+            "circuit_breakers": {
+                "ollama_client": ollama_cb_metrics,
+            },
+            "summary": {
+                "total_circuits": 1,
+                "open_circuits": 1 if ollama_cb_metrics.get("state") == "open" else 0,
+                "half_open_circuits": 1 if ollama_cb_metrics.get("state") == "half_open" else 0,
+            },
+        }
+
+        return response
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to retrieve circuit breaker metrics",
+                "detail": str(e),
+            },
+        )
+
+
 class IngestRequest(BaseModel):
     paths: list[str] = ["data/docs"]
     db: str | None = None
