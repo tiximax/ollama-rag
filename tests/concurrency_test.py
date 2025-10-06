@@ -9,12 +9,8 @@ Test thread safety của:
 """
 
 import concurrent.futures
-import os
 import shutil
 import tempfile
-import threading
-import time
-from pathlib import Path
 
 
 def test_concurrent_bm25_build():
@@ -58,7 +54,7 @@ def test_concurrent_bm25_build():
             try:
                 result = engine._ensure_bm25()
                 return (worker_id, result, True)
-            except Exception as e:
+            except Exception:
                 return (worker_id, False, False)
 
         print("🚀 Launching 20 concurrent threads...")
@@ -76,9 +72,7 @@ def test_concurrent_bm25_build():
             print("✅ PASS: BM25 built exactly once (double-checked locking works!)")
             return True
         elif build_count["count"] <= 3:
-            print(
-                f"⚠️  WARNING: BM25 built {build_count['count']} times (minor race condition)"
-            )
+            print(f"⚠️  WARNING: BM25 built {build_count['count']} times (minor race condition)")
             print("   This is acceptable but could be optimized")
             return True
         else:
@@ -221,9 +215,7 @@ def test_concurrent_chat_operations():
                 print("✅ PASS: All messages written correctly!")
                 return True
             else:
-                print(
-                    f"⚠️  WARNING: Expected 60 messages, got {message_count} (some may be lost)"
-                )
+                print(f"⚠️  WARNING: Expected 60 messages, got {message_count} (some may be lost)")
                 return message_count >= 50  # Allow some tolerance
         else:
             print("❌ FAIL: Chat corrupted or not found")
