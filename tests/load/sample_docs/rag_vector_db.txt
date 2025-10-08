@@ -1,0 +1,34 @@
+Retrieval-Augmented Generation (RAG)
+
+RAG is an advanced AI technique that enhances Large Language Models (LLMs) by incorporating external knowledge through document retrieval. This approach combines the power of semantic search with generative AI.
+
+How RAG Works:
+1. Document Ingestion: Text documents are split into chunks
+2. Embedding Generation: Each chunk is converted to vector embeddings
+3. Vector Storage: Embeddings are stored in a vector database
+4. Query Processing: User queries are embedded using the same model
+5. Similarity Search: Most relevant document chunks are retrieved
+6. Context Augmentation: Retrieved chunks are added to LLM prompt
+7. Generation: LLM generates response with retrieved context
+
+Vector Databases:
+Vector databases are specialized for storing and searching high-dimensional vectors. Popular options include:
+- ChromaDB: Lightweight, easy to use
+- Pinecone: Managed, scalable
+- Weaviate: Open-source, feature-rich
+- FAISS: Fast similarity search by Facebook
+
+Semantic Search:
+Unlike keyword search, semantic search understands meaning and context. It uses cosine similarity to find documents similar to the query vector.
+
+Benefits of RAG:
+- Reduces hallucinations by grounding responses in factual data
+- Enables LLMs to access up-to-date information
+- Provides source attribution for generated answers
+- More cost-effective than fine-tuning for knowledge updates
+
+Key Components:
+- Embedding Models: Transform text to vectors (e.g., sentence-transformers)
+- Vector Index: Enables fast approximate nearest neighbor search
+- Reranking: Improves relevance of retrieved documents
+- Caching: Speeds up repeated queries
