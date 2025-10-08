@@ -27,11 +27,13 @@ from locust import HttpUser, TaskSet, between, task
 class LoadTestConfig:
     """Configuration ổn định cho load tests như kim cương! 💎"""
 
-    # Endpoints to test
-    OLLAMA_GENERATE_ENDPOINT = "/api/generate"
-    OLLAMA_CHAT_ENDPOINT = "/api/chat"
+    # Endpoints to test - RAG API
+    RAG_QUERY_ENDPOINT = "/api/query"
+    RAG_STREAM_ENDPOINT = "/api/stream_query"
+    CHAT_ENDPOINT = "/api/chats"
     METRICS_ENDPOINT = "/metrics"
     HEALTH_ENDPOINT = "/health"
+    CACHE_STATS_ENDPOINT = "/api/cache-stats"
 
     # Test data - Realistic queries
     SAMPLE_QUERIES = [
@@ -85,36 +87,36 @@ class OllamaUserBehavior(TaskSet):
         print(f"🚀 User {self.user_id} started session")
 
     @task(5)
-    def generate_query(self):
+    def rag_query(self):
         """
-        Task chính: Generate response từ query (weight=5)
+        Task chính: RAG query với retrieval (weight=5)
 
         Đây là task phổ biến nhất, chiếm 50% traffic!
         """
         query = random.choice(LoadTestConfig.SAMPLE_QUERIES)
 
         payload = {
-            "model": LoadTestConfig.TEST_MODEL,
-            "prompt": query,
-            "stream": False,  # Không stream để dễ đo latency
+            "query": query,
+            "n_results": 3,  # Retrieve top 3 docs
+            "rerank": False,  # Skip reranking for faster testing
         }
 
         with self.client.post(
-            LoadTestConfig.OLLAMA_GENERATE_ENDPOINT,
+            LoadTestConfig.RAG_QUERY_ENDPOINT,
             json=payload,
             timeout=LoadTestConfig.GENERATE_TIMEOUT,
             catch_response=True,
-            name="Ollama Generate",
+            name="RAG Query",
         ) as response:
             if response.status_code == 200:
                 try:
                     data = response.json()
                     # Validate response có đúng format không
-                    if "response" in data:
+                    if "answer" in data:
                         response.success()
                         print(f"✅ {self.user_id}: Query successful - {query[:30]}...")
                     else:
-                        response.failure("Missing 'response' field in JSON")
+                        response.failure("Missing 'answer' field in JSON")
                 except json.JSONDecodeError:
                     response.failure("Invalid JSON response")
             elif response.status_code == 503:
@@ -125,41 +127,34 @@ class OllamaUserBehavior(TaskSet):
                 response.failure(f"HTTP {response.status_code}")
 
     @task(3)
-    def chat_conversation(self):
+    def create_chat(self):
         """
-        Task chat: Multi-turn conversation (weight=3)
+        Task chat: Create new chat session (weight=3)
 
-        Mô phỏng cuộc trò chuyện nhiều lượt với context!
+        Mô phỏng user tạo conversation mới!
         """
         topic = random.choice(["AI", "ML", "NLP", "RAG", "LLMs"])
 
-        # Build conversation from template
-        messages = [
-            {"role": msg["role"], "content": msg["content"].format(topic=topic)}
-            for msg in LoadTestConfig.CHAT_TEMPLATES
-        ]
-
         payload = {
-            "model": LoadTestConfig.TEST_MODEL,
-            "messages": messages,
-            "stream": False,
+            "title": f"Chat about {topic}",
+            "metadata": {"topic": topic, "test": True},
         }
 
         with self.client.post(
-            LoadTestConfig.OLLAMA_CHAT_ENDPOINT,
+            LoadTestConfig.CHAT_ENDPOINT,
             json=payload,
             timeout=LoadTestConfig.CHAT_TIMEOUT,
             catch_response=True,
-            name="Ollama Chat",
+            name="Create Chat",
         ) as response:
-            if response.status_code == 200:
+            if response.status_code == 201:
                 try:
                     data = response.json()
-                    if "message" in data:
+                    if "chat_id" in data:
                         response.success()
-                        print(f"💬 {self.user_id}: Chat successful about {topic}")
+                        print(f"💬 {self.user_id}: Chat created about {topic}")
                     else:
-                        response.failure("Missing 'message' field")
+                        response.failure("Missing 'chat_id' field")
                 except json.JSONDecodeError:
                     response.failure("Invalid JSON response")
             elif response.status_code == 503:
@@ -169,25 +164,28 @@ class OllamaUserBehavior(TaskSet):
                 response.failure(f"HTTP {response.status_code}")
 
     @task(2)
-    def check_metrics(self):
+    def check_cache_stats(self):
         """
-        Task metrics check (weight=2)
+        Task cache stats check (weight=2)
 
-        User hoặc monitoring system check metrics định kỳ!
+        User hoặc monitoring system check cache performance!
         """
         with self.client.get(
-            LoadTestConfig.METRICS_ENDPOINT,
+            LoadTestConfig.CACHE_STATS_ENDPOINT,
             timeout=LoadTestConfig.METRICS_TIMEOUT,
             catch_response=True,
-            name="Metrics Check",
+            name="Cache Stats",
         ) as response:
             if response.status_code == 200:
-                # Validate Prometheus format
-                if "ollama_requests_total" in response.text:
-                    response.success()
-                    print(f"📊 {self.user_id}: Metrics checked")
-                else:
-                    response.failure("Invalid Prometheus metrics format")
+                try:
+                    data = response.json()
+                    if "semantic_cache" in data:
+                        response.success()
+                        print(f"📊 {self.user_id}: Cache stats checked")
+                    else:
+                        response.failure("Missing cache stats")
+                except json.JSONDecodeError:
+                    response.failure("Invalid JSON response")
             else:
                 response.failure(f"HTTP {response.status_code}")
 
